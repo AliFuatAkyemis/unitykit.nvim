@@ -546,7 +546,7 @@ git commit -m "feat: add regex fallback context resolution"
   - `require("unitykit.context").invalidate(bufnr: integer|nil)`
   - `require("unitykit.context").is_in_class_body(ctx: Context, row: integer) -> boolean`
 
-- [ ] **Step 1: Write failing `tests/cache_spec.lua`**
+- [x] **Step 1: Write failing `tests/cache_spec.lua`**
 
 ```lua
 local cache = require("unitykit.context.cache")
@@ -596,9 +596,9 @@ vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "public class A : MonoBehaviour"
 h.eq(context.resolve(buf, require("unitykit.config").setup()).source, "fallback", "degisiklikten sonra yine fallback")
 ```
 
-- [ ] **Step 2: Run, verify fail.**
+- [x] **Step 2: Run, verify fail.**
 
-- [ ] **Step 3: Implement `lua/unitykit/context/cache.lua`**
+- [x] **Step 3: Implement `lua/unitykit/context/cache.lua`**
 
 - `M.entries[bufnr] = { tick = nvim_buf_get_changedtick(bufnr), ctx = ctx, pending = true|false }`
 - `get`: kayıt varsa ve `tick == changedtick` ise `ctx` (pending ise `ctx` yine döner — fallback context).
@@ -607,7 +607,7 @@ h.eq(context.resolve(buf, require("unitykit.config").setup()).source, "fallback"
 - `invalidate(nil)`: tümü; aksi halde tek kayıt.
 - `BufWipeout`/`BufDelete` autocmd bir kez (`once` değil, `group` + `clear` korumalı) ile `invalidate(bufnr)`.
 
-- [ ] **Step 4: Implement `lua/unitykit/context/init.lua`**
+- [x] **Step 4: Implement `lua/unitykit/context/init.lua`**
 
 ```lua
 function M.resolve(bufnr, cfg)
@@ -634,9 +634,9 @@ end
 - `is_in_class_body(ctx, row)`: `ctx.class_range` ve `row >= start_line` ve `row <= end_line`; `method_ranges` içinde `row >= start_line and row <= end_line` olan varsa `false`.
 - `invalidate(bufnr)` -> `cache.invalidate`.
 
-- [ ] **Step 5: Run tests, verify pass.**
+- [x] **Step 5: Run tests, verify pass.**
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add lua/unitykit/context/init.lua lua/unitykit/context/cache.lua tests/cache_spec.lua
