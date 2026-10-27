@@ -661,7 +661,7 @@ git commit -m "feat: add context cache and LSP-first orchestration"
   - `require("unitykit.context.lsp").qualify(kind: string) -> string` (test yardımcısı değil; `classify` ile aynı eşleme)
   - `require("unitykit.context.lsp").resolve(bufnr: integer, cfg: Config, done: fun(ctx: Context|nil)) -> nil` — asenkron; her koşulda `done` tam bir kez çağrılır, `timeout_ms` sonunda `nil` ile
 
-- [ ] **Step 1: Write failing `tests/context_lsp_spec.lua`**
+- [x] **Step 1: Write failing `tests/context_lsp_spec.lua`**
 
 ```lua
 local lsp = require("unitykit.context.lsp")
@@ -700,9 +700,9 @@ h.eq(result, nil, "client yokken nil")
 
 `h.eq` tablo karşılaştırması `vim.deep_equal` kullanır.
 
-- [ ] **Step 2: Run, verify fail.**
+- [x] **Step 2: Run, verify fail.**
 
-- [ ] **Step 3: Implement pure helpers**
+- [x] **Step 3: Implement pure helpers**
 
 - `strip_generics`: `<` öncesini al, `trim`.
 - `parse_base_names(line)`: `:` sonrasını al; `{}`/`;` kes; virgülle böl; her parçayı `strip_generics` + `trim`; boşları at. `(` içerenleri (constructor constraint) at.
@@ -710,7 +710,7 @@ h.eq(result, nil, "client yokken nil")
 - `parse_hover_class(md)`: `class%s+([%w_%.]+)` deseni; ilk yakalama. `struct`/`interface`/`enum` -> nil (desen zaten `class` arar, ama `class` içeren düz metin yanlış pozitif üretmesin diye yalnız ```csharp bloğunun ilk satırına bak).
 - `KIND_BY_QUALIFIED` = `{ ["UnityEngine.MonoBehaviour"] = "monobehaviour", ["UnityEngine.ScriptableObject"] = "scriptableobject", ["UnityEditor.Editor"] = "editor" }`; `qualify(kind)` ters eşleme.
 
-- [ ] **Step 4: Implement `resolve(bufnr, cfg, done)`**
+- [x] **Step 4: Implement `resolve(bufnr, cfg, done)`**
 
 Akış (her adım `pcall` ve iptal bayrağıyla korunur):
 
@@ -734,9 +734,9 @@ Akış (her adım `pcall` ve iptal bayrağıyla korunur):
 
 Not: `workspace/symbol` desteklenmiyorsa (`client.server_capabilities.workspaceSymbolProvider == false`) yalnız hover ile sınırlı kal, `nil` dön.
 
-- [ ] **Step 5: Run tests, verify pass.**
+- [x] **Step 5: Run tests, verify pass.**
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add lua/unitykit/context/lsp.lua tests/context_lsp_spec.lua
