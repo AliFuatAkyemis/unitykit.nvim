@@ -73,6 +73,11 @@ require("unitykit").setup({opts})                       *unitykit.setup()*
   `opts` is an optional table; see |unitykit-config|. Returns the merged
   configuration table.
 
+require("unitykit").is_registered()
+
+  Reports whether the cmp source has been registered successfully so far.
+  Used by |unitykit-health|.
+
 ==============================================================================
 4. Configuration                                        *unitykit-config*
 
@@ -161,11 +166,12 @@ The prefix already typed is filtered by nvim-cmp itself.
   Reports:
   - the Neovim version against the 0.10 minimum
   - whether nvim-cmp is installed
-  - whether the unitykit source module is loaded
+  - whether the unitykit cmp source is registered; a failed registration is
+    an error with a hint to re-run `require("unitykit").setup()`
   - the Unity project root found from the current buffer (or that the
     buffer is not inside a Unity project)
   - the attached C# language server names, or that the regex fallback is
-    active
+    active (only for buffers whose filetype is in `config.filetypes`)
   - the cached context source (`lsp` or `fallback`) and the class name and
     kind, when completion already resolved the buffer; the check itself
     never resolves context or sends language server requests

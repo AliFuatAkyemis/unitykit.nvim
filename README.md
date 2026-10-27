@@ -59,7 +59,10 @@ require("unitykit").setup({
 })
 ```
 
-`setup` birleştirilmiş config tablosunu döndürür. Ayrıntılar: `:help unitykit-config`.
+`setup` birleştirilmiş config tablosunu döndürür. Source kaydı bir kez
+başarıyla yapılır; nvim-cmp o anda yüklü değilse sonraki `setup()` çağrısı
+kaydı yeniden dener. `require("unitykit").is_registered()` kaydın durumunu
+bildirir. Ayrıntılar: `:help unitykit-config`.
 
 ## Sağlık kontrolü
 
@@ -67,8 +70,10 @@ require("unitykit").setup({
 :checkhealth unitykit
 ```
 
-Neovim sürümü, nvim-cmp, kayıtlı source, aktif buffer'daki Unity kökü, C# LSP
-client'ları ve çözülen bağlam kaynağını (`lsp` / `fallback`) raporlar.
+Neovim sürümü, nvim-cmp, kayıtlı source, aktif buffer'daki Unity kökü ve C# LSP
+client'ları raporlanır. Bağlam kaynağı (`lsp` / `fallback`) ile sınıf adı ve
+türü yalnız cache'te varsa gösterilir; `:checkhealth` bağlam çözmez ve LSP
+isteği göndermez.
 
 ## Sınırlar
 

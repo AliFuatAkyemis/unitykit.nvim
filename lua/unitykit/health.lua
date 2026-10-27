@@ -1,6 +1,7 @@
 -- `:checkhealth unitykit` support. Every section degrades gracefully: no
 -- cmp, no LSP and no Unity root are reported, never raised. The check is
 -- read-only: it never resolves context or sends LSP requests.
+local config = require("unitykit.config")
 local project = require("unitykit.project")
 
 local M = {}
@@ -54,18 +55,27 @@ local function check_version()
 end
 
 local function check_cmp()
+  -- Read-only presence probe. This is the only `require("cmp")` outside
+  -- completion/cmp.lua; it is pcall-guarded and registers nothing.
   if pcall(require, "cmp") then
     vim.health.ok("nvim-cmp is installed")
-  else
-    vim.health.warn("nvim-cmp is not installed; the unitykit source stays unregistered")
+    return true
   end
+  vim.health.warn("nvim-cmp is not installed; the unitykit source cannot be registered")
+  return false
 end
 
-local function check_source()
-  if package.loaded["unitykit.completion.cmp"] then
-    vim.health.ok("unitykit source module is loaded")
+local function check_source(cmp_available)
+  if not cmp_available then
+    vim.health.warn("Source: not registered, nvim-cmp is not installed")
+    return
+  end
+  if require("unitykit").is_registered() then
+    vim.health.ok("Source: unitykit is registered")
   else
-    vim.health.warn("unitykit source is not loaded; call require('unitykit').setup()")
+    vim.health.error(
+      "Source: unitykit is not registered; re-run require('unitykit').setup()"
+    )
   end
 end
 
@@ -83,8 +93,10 @@ local function check_buffer(bufnr)
   local clients = csharp_clients(bufnr)
   if #clients > 0 then
     vim.health.ok("C# LSP: " .. table.concat(clients, ", "))
-  else
+  elseif vim.tbl_contains(config.get().filetypes, vim.bo[bufnr].filetype) then
     vim.health.info("No C# LSP client (fallback active)")
+  else
+    vim.health.info("Not a C# buffer (no C# LSP client expected)")
   end
 
   return root
@@ -121,8 +133,8 @@ end
 function M.check()
   vim.health.start("unitykit")
   check_version()
-  check_cmp()
-  check_source()
+  local cmp_available = check_cmp()
+  check_source(cmp_available)
 
   local bufnr = target_bufnr()
   local root = check_buffer(bufnr)

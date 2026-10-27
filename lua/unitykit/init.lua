@@ -19,4 +19,10 @@ function M.setup(opts)
   return cfg
 end
 
+---Reports whether the cmp source was registered by a previous `setup()`.
+---@return boolean
+function M.is_registered()
+  return registered
+end
+
 return M
