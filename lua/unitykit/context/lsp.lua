@@ -84,6 +84,9 @@ function M.parse_base_names(class_line)
     return {}
   end
   local bases = class_line:sub(colon + 1)
+  -- Trailing comments are not part of the base list.
+  bases = bases:gsub("/%*.-%*/", " ")
+  bases = bases:gsub("//[^\n]*", "")
   local boundary = bases:find("[{};]")
   if boundary then
     bases = bases:sub(1, boundary - 1)
@@ -342,50 +345,61 @@ end
 local resolve_kind
 
 -- Follows the hover answer of a project class through `workspace/symbol` and
--- reads its declaration to continue the chain.
-local function follow_symbol(state, plain, depth, on_done)
+-- reads its declaration to continue the chain. Failures call `on_fail` so the
+-- caller can try the declaration's remaining bases.
+local function follow_symbol(state, plain, depth, on_done, on_fail)
   if state.finished then
     return
   end
   if is_expired(state) then
-    return on_done(nil)
+    return on_fail()
   end
   if not supports_workspace_symbols(state.client) then
-    return on_done(nil)
+    return on_fail()
   end
-  state.client:request("workspace/symbol", { query = plain }, function(err, result)
-    if state.finished then
-      return
-    end
-    if is_expired(state) then
-      return on_done(nil)
-    end
-    if err or type(result) ~= "table" then
-      return on_done(nil)
-    end
-    local symbol
-    for _, item in ipairs(result) do
-      if type(item) == "table" and item.name == plain and item.kind == CLASS_KIND then
-        symbol = item
-        break
+  local ok_request = pcall(function()
+    state.client:request("workspace/symbol", { query = plain }, function(err, result)
+      if state.finished then
+        return
       end
-    end
-    local range = node_range(symbol)
-    local uri = symbol and symbol.location and symbol.location.uri
-    if not range or type(uri) ~= "string" then
-      return on_done(nil)
-    end
-    local lines, bufnr = read_source_lines(uri)
-    if not lines then
-      return on_done(nil)
-    end
-    resolve_kind(state, {
-      uri = uri,
-      lines = lines,
-      start_line = range.start.line,
-      bufnr = bufnr,
-    }, depth + 1, on_done)
+      if is_expired(state) then
+        return on_fail()
+      end
+      if err or type(result) ~= "table" then
+        return on_fail()
+      end
+      local symbol
+      for _, item in ipairs(result) do
+        if type(item) == "table" and item.name == plain and item.kind == CLASS_KIND then
+          symbol = item
+          break
+        end
+      end
+      local range = node_range(symbol)
+      local uri = symbol and symbol.location and symbol.location.uri
+      if not range or type(uri) ~= "string" then
+        return on_fail()
+      end
+      local lines, bufnr = read_source_lines(uri)
+      if not lines then
+        return on_fail()
+      end
+      resolve_kind(state, {
+        uri = uri,
+        lines = lines,
+        start_line = range.start.line,
+        bufnr = bufnr,
+      }, depth + 1, function(kind)
+        if kind then
+          return on_done(kind)
+        end
+        on_fail()
+      end)
+    end)
   end)
+  if not ok_request then
+    on_fail()
+  end
 end
 
 -- Walks the base list of one declaration: short Unity names resolve locally,
@@ -425,29 +439,34 @@ resolve_kind = function(state, source, depth, on_done)
     if not position then
       return next_base()
     end
-    state.client:request("textDocument/hover", {
-      textDocument = { uri = source.uri },
-      position = position,
-    }, function(err, result)
-      if state.finished then
-        return
-      end
-      if is_expired(state) then
-        return on_done(nil)
-      end
-      if err or type(result) ~= "table" then
-        return next_base()
-      end
-      local qualified = M.parse_hover_class(contents_to_text(result.contents))
-      if not qualified then
-        return next_base()
-      end
-      local hovered_kind = fallback.classify(qualified)
-      if hovered_kind then
-        return on_done(hovered_kind)
-      end
-      follow_symbol(state, plain, depth, on_done)
-    end, source.bufnr)
+    local ok_request = pcall(function()
+      state.client:request("textDocument/hover", {
+        textDocument = { uri = source.uri },
+        position = position,
+      }, function(err, result)
+        if state.finished then
+          return
+        end
+        if is_expired(state) then
+          return on_done(nil)
+        end
+        if err or type(result) ~= "table" then
+          return next_base()
+        end
+        local qualified = M.parse_hover_class(contents_to_text(result.contents))
+        if not qualified then
+          return next_base()
+        end
+        local hovered_kind = fallback.classify(qualified)
+        if hovered_kind then
+          return on_done(hovered_kind)
+        end
+        follow_symbol(state, plain, depth, on_done, next_base)
+      end, source.bufnr)
+    end)
+    if not ok_request then
+      next_base()
+    end
   end
 
   next_base()
