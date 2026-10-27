@@ -180,8 +180,8 @@ vim.api.nvim_buf_set_name(buf, fake .. "/Assets/C.cs")
 h.eq(project.root(buf), nil, "ProjectVersion yoksa kok yok")
 
 -- unnamed buffer
-vim.api.nvim_buf_set_name(buf, "")
-h.eq(project.root(buf), nil, "isimsiz buffer nil")
+local anon = h.new_buf({ "public class N {}" }, "cs")
+h.eq(project.root(anon), nil, "isimsiz buffer nil")
 
 -- cache invalidation
 vim.api.nvim_buf_set_name(buf, dir .. "/Assets/Scripts/A.cs")
@@ -714,7 +714,7 @@ h.eq(result, nil, "client yokken nil")
 
 Akış (her adım `pcall` ve iptal bayrağıyla korunur):
 
-1. `client = vim.lsp.get_clients({ bufnr = bufnr, method = "textDocument/documentSymbol" })[1]`; yoksa `done(nil)` döndür (`vim.schedule`).
+1. `client = vim.lsp.get_clients({ bufnr = bufnr, method = "textDocument/documentSymbol" })[1]`; yoksa `done(nil)` döndür (senkron, `vim.schedule` kullanma — test bunu bekliyor).
 2. `deadline = uv.now() + cfg.timeout_ms`; `finish(ctx)` yardımcısı `once` semantiği uygular, `done(ctx)` çağırır.
 3. `client:request("textDocument/documentSymbol", { textDocument = ... }, handler, bufnr)`:
    - handler içinde imleci içeren `kind == 5` (Class) en içteki sembolü bul -> `class_sym`.
@@ -894,6 +894,8 @@ h.eq(registered, 1, "source iki kez kaydedilmez")
 h.eq(require("unitykit.config").get().body, "block", "son setup gecerli")
 
 package.loaded.cmp = nil
+package.loaded["unitykit.completion.cmp"] = nil
+package.loaded["unitykit"] = nil
 local ok = pcall(function() require("unitykit").setup({}) end)
 h.check(ok, "cmp yokken setup hata vermez")
 
