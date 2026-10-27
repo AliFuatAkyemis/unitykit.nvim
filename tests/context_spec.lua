@@ -60,12 +60,14 @@ local multi = h.new_buf({
   "{",                                   -- 2
   "}",                                   -- 3
 }, "cs")
+vim.api.nvim_win_set_cursor(0, { 3, 0 })
 local mctx = fallback.resolve(multi)
 h.eq(mctx.class_name, "Foo", "generic sinif adi temiz")
 h.eq(mctx.class_kind, "monobehaviour", "cok satirli base list")
 
 -- class without base
 local plain = h.new_buf({ "public class Plain", "{", "}" }, "cs")
+vim.api.nvim_win_set_cursor(0, { 2, 0 })
 local pctx = fallback.resolve(plain)
 h.eq(pctx.class_kind, nil, "base yoksa tur yok")
 h.eq(pctx.class_name, "Plain", "sinif adi yine bulunur")
@@ -85,6 +87,46 @@ local above = h.new_buf({
 }, "cs")
 vim.api.nvim_win_set_cursor(0, { 1, 0 })
 h.eq(fallback.resolve(above).class_name, nil, "bildirim ustunde sinif yok")
+
+-- cursor after the last class body
+local trailing = h.new_buf({
+  "public class Finished : MonoBehaviour",
+  "{",
+  "}",
+  "",
+  "// trailing comment",
+}, "cs")
+vim.api.nvim_win_set_cursor(0, { 5, 0 })
+h.eq(fallback.resolve(trailing).class_name, nil, "son siniftan sonra nil")
+
+-- ---------------------------------------------------------------------------
+-- Generic `where` constraints are not base lists or declarations.
+-- ---------------------------------------------------------------------------
+local constrained = h.new_buf({
+  "public class Wrapper<T> where T : MonoBehaviour",
+  "{",
+  "}",
+}, "cs")
+vim.api.nvim_win_set_cursor(0, { 2, 0 })
+local w = fallback.resolve(constrained)
+h.eq(w.class_name, "Wrapper", "where sinif adi")
+h.eq(w.class_kind, nil, "where base sayilmaz")
+
+local two_where = h.new_buf({
+  "public class Where<T>",         -- 0
+  "    where T : MonoBehaviour",   -- 1
+  "    where U : class",           -- 2
+  "    where V : new()",           -- 3
+  "{",                             -- 4
+  "    void Awake() { }",          -- 5
+  "}",                             -- 6
+}, "cs")
+vim.api.nvim_win_set_cursor(0, { 6, 4 })
+local tw = fallback.resolve(two_where)
+h.eq(tw.class_name, "Where", "cok where sinif adi")
+h.eq(tw.class_kind, nil, "cok where base sayilmaz")
+h.eq(tw.class_range, { start_line = 0, end_line = 6 }, "cok where sinif araligi")
+h.check(tw.implemented.Awake, "cok where Awake")
 
 -- ---------------------------------------------------------------------------
 -- Method bodies, declaration lines and body-less methods.
@@ -115,6 +157,52 @@ h.check(m.implemented.Helper, "Helper mevcut")
 h.check(m.implemented.Gone, "Gone abstract")
 h.check(not m.implemented.Debug, "cagri metot sayilmaz")
 h.check(not m.implemented.HelperCall, "yerel cagri metot sayilmaz")
+
+-- method `where` constraints, tuple return types and finalizers
+local where_method = h.new_buf({
+  "public class WhereMethod : MonoBehaviour", -- 0
+  "{",                                        -- 1
+  "    public T Get<T>() where T : new()",    -- 2
+  "    {",                                    -- 3
+  "        return default(T);",               -- 4
+  "    }",                                    -- 5
+  "}",                                        -- 6
+}, "cs")
+vim.api.nvim_win_set_cursor(0, { 4, 8 })
+local wm = fallback.resolve(where_method)
+h.check(wm.implemented.Get, "where metot bulunur")
+h.eq(#wm.method_ranges, 1, "where metot sayisi")
+h.eq(wm.method_ranges[1], { start_line = 2, end_line = 5 }, "where metot govdesi")
+
+local tuple = h.new_buf({
+  "public class TupleReturn : MonoBehaviour", -- 0
+  "{",                                        -- 1
+  "    public (int, string) Get()",           -- 2
+  "    {",                                    -- 3
+  "        return (1, \"x\");",               -- 4
+  "    }",                                    -- 5
+  "}",                                        -- 6
+}, "cs")
+vim.api.nvim_win_set_cursor(0, { 4, 8 })
+local tr = fallback.resolve(tuple)
+h.check(tr.implemented.Get, "tuple donus tipi metot")
+h.eq(#tr.method_ranges, 1, "tuple metot sayisi")
+h.eq(tr.method_ranges[1], { start_line = 2, end_line = 5 }, "tuple metot govdesi")
+
+local finalizer = h.new_buf({
+  "public class Finalizer : MonoBehaviour", -- 0
+  "{",                                      -- 1
+  "    ~Finalizer()",                       -- 2
+  "    {",                                  -- 3
+  "    }",                                  -- 4
+  "    void Start() { }",                   -- 5
+  "}",                                      -- 6
+}, "cs")
+vim.api.nvim_win_set_cursor(0, { 6, 4 })
+local fin = fallback.resolve(finalizer)
+h.check(not fin.implemented.Finalizer, "finalizer metot degil")
+h.check(fin.implemented.Start, "finalizer sinifinda Start")
+h.eq(#fin.method_ranges, 1, "finalizer metot sayisi")
 
 -- ---------------------------------------------------------------------------
 -- Sibling classes and nested-class method isolation.
@@ -236,6 +324,7 @@ h.eq(e.implemented, {}, "bos buffer implemented bos")
 h.eq(e.source, "fallback", "bos buffer kaynak")
 
 local unbalanced = h.new_buf({ "public class Broken : MonoBehaviour", "{", "void Start() {" }, "cs")
+vim.api.nvim_win_set_cursor(0, { 2, 0 })
 local ok, br = pcall(fallback.resolve, unbalanced)
 h.check(ok, "dengesiz brace hata vermez")
 h.eq(type(br), "table", "dengesiz brace tablo doner")
@@ -247,5 +336,17 @@ h.eq(invalid.source, "fallback", "gecersiz buffer kaynak")
 h.eq(invalid.class_name, nil, "gecersiz buffer sinif yok")
 
 h.eq(fallback.classify(nil), nil, "nil isim nil")
+
+-- Large-buffer regression: 400 methods are all found in one resolve.
+local many_lines = { "public class Many : MonoBehaviour", "{" }
+for i = 1, 400 do
+  many_lines[#many_lines + 1] = string.format("    void M%d() { }", i)
+end
+many_lines[#many_lines + 1] = "}"
+local many = h.new_buf(many_lines, "cs")
+vim.api.nvim_win_set_cursor(0, { 3, 4 })
+local many_ctx = fallback.resolve(many)
+h.eq(#many_ctx.method_ranges, 400, "400 metot cozulur")
+h.check(many_ctx.implemented.M400, "son metot kaydedilir")
 
 h.finish()

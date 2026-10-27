@@ -81,17 +81,6 @@ local function empty_context()
   }
 end
 
--- Counts newlines before `pos`; the result is a 0-based line number.
-local function line_of(text, pos)
-  local _, count = text:sub(1, math.max(pos - 1, 0)):gsub("\n", "")
-  return count
-end
-
-local function line_start_of(text, pos)
-  local newline = text:sub(1, pos - 1):match(".*()\n")
-  return newline and (newline + 1) or 1
-end
-
 -- Returns the byte position just after a string/char literal (or the newline
 -- position when a regular literal is not terminated on that line).
 local function skip_literal(text, pos)
@@ -113,89 +102,160 @@ local function skip_literal(text, pos)
   return length + 1
 end
 
--- Pragmatic scanner: decides whether `target` is inside a comment or literal.
--- It is intentionally small; C# has more lexical corners than this fallback.
-local function is_commented_or_string(text, target)
+-- Scans the buffer once: line starts and byte ranges occupied by comments or
+-- string/char literals. Later lookups are binary searches over these tables,
+-- so resolving does not rescan the whole text per identifier.
+local function build_scan(text)
+  local scan = { text = text, line_starts = { 1 }, ignored = {} }
   local i = 1
   local length = #text
-  while i < target do
+  while i <= length do
     local char = text:sub(i, i)
     local next_char = text:sub(i + 1, i + 1)
-    if char == '"' or char == "'" then
+    if char == "\n" then
+      scan.line_starts[#scan.line_starts + 1] = i + 1
+      i = i + 1
+    elseif char == '"' or char == "'" then
       local after = skip_literal(text, i)
-      if after > target then
-        return true
-      end
+      scan.ignored[#scan.ignored + 1] = { start = i, finish = after - 1 }
       i = after
     elseif char == "/" and next_char == "/" then
       local newline = text:find("\n", i + 2, true)
-      if not newline or newline >= target then
-        return true
-      end
-      i = newline + 1
+      local finish = newline and (newline - 1) or length
+      scan.ignored[#scan.ignored + 1] = { start = i, finish = finish }
+      i = newline or (length + 1)
     elseif char == "/" and next_char == "*" then
       local close = text:find("*/", i + 2, true)
-      if not close or close + 2 > target then
-        return true
-      end
-      i = close + 2
+      local finish = close and (close + 1) or length
+      scan.ignored[#scan.ignored + 1] = { start = i, finish = finish }
+      i = close and (close + 2) or (length + 1)
     else
       i = i + 1
     end
   end
-  return false
+  return scan
 end
 
--- Commented matches are skipped. The line-prefix check is the cheap guard
--- described by the plan; the scanner handles string literals as well.
-local function is_ignored(text, pos)
-  if is_commented_or_string(text, pos) then
+local function line_index(scan, pos)
+  local starts = scan.line_starts
+  local low, high = 1, #starts
+  local found = 1
+  while low <= high do
+    local mid = math.floor((low + high) / 2)
+    if starts[mid] <= pos then
+      found = mid
+      low = mid + 1
+    else
+      high = mid - 1
+    end
+  end
+  return found
+end
+
+-- 0-based line number for a 1-based byte position.
+local function line_of(scan, pos)
+  return line_index(scan, pos) - 1
+end
+
+local function line_start_of(scan, pos)
+  return scan.line_starts[line_index(scan, pos)]
+end
+
+local function inside_ignored(scan, pos)
+  local ranges = scan.ignored
+  local low, high = 1, #ranges
+  local found = 0
+  while low <= high do
+    local mid = math.floor((low + high) / 2)
+    if ranges[mid].start <= pos then
+      found = mid
+      low = mid + 1
+    else
+      high = mid - 1
+    end
+  end
+  return found > 0 and pos <= ranges[found].finish
+end
+
+-- Commented matches are skipped. The line-prefix guard mirrors the plan;
+-- ignored ranges already cover string literals and block comments.
+local function is_ignored(scan, pos)
+  if inside_ignored(scan, pos) then
     return true
   end
-  local prefix = text:sub(line_start_of(text, pos), pos - 1):gsub("^%s+", "")
-  return prefix:match("^//") ~= nil or prefix:match("^%*") ~= nil
+  local text = scan.text
+  local i = line_start_of(scan, pos)
+  while i < pos do
+    local char = text:sub(i, i)
+    if not char:match("%s") then
+      break
+    end
+    i = i + 1
+  end
+  if i >= pos then
+    return false
+  end
+  if text:sub(i, i + 1) == "//" then
+    return true
+  end
+  return text:sub(i, i) == "*"
 end
 
-local function find_unquoted(text, init, needle)
+local function find_unquoted(scan, init, needle)
   local pos = init
   while true do
-    local found = text:find(needle, pos, true)
+    local found = scan.text:find(needle, pos, true)
     if not found then
       return nil
     end
-    if not is_commented_or_string(text, found) then
+    if not inside_ignored(scan, found) then
       return found
     end
     pos = found + 1
   end
 end
 
--- Finds the matching closing delimiter, skipping comments and literals.
-local function match_pair(text, open_pos, open_char, close_char)
+local function first_range_ending_after(ranges, pos)
+  local low, high = 1, #ranges
+  local found = #ranges + 1
+  while low <= high do
+    local mid = math.floor((low + high) / 2)
+    if ranges[mid].finish >= pos then
+      found = mid
+      high = mid - 1
+    else
+      low = mid + 1
+    end
+  end
+  return found
+end
+
+-- Finds the matching closing delimiter. A pointer walks the sorted ignored
+-- ranges, so comments and literals are skipped without rescanning them.
+local function match_pair(scan, open_pos, open_char, close_char)
+  local text = scan.text
+  local ranges = scan.ignored
+  local index = first_range_ending_after(ranges, open_pos)
   local depth = 0
   local i = open_pos
   local length = #text
   while i <= length do
-    local char = text:sub(i, i)
-    local next_char = text:sub(i + 1, i + 1)
-    if char == '"' or char == "'" then
-      i = skip_literal(text, i)
-    elseif char == "/" and next_char == "/" then
-      local newline = text:find("\n", i + 2, true)
-      i = newline and (newline + 1) or (length + 1)
-    elseif char == "/" and next_char == "*" then
-      local close = text:find("*/", i + 2, true)
-      i = close and (close + 2) or (length + 1)
-    elseif char == open_char then
-      depth = depth + 1
-      i = i + 1
-    elseif char == close_char then
-      depth = depth - 1
-      if depth == 0 then
-        return i
-      end
-      i = i + 1
+    local range = ranges[index]
+    if range and i > range.finish then
+      index = index + 1
+    elseif range and i >= range.start then
+      i = range.finish + 1
+      index = index + 1
     else
+      local char = text:sub(i, i)
+      if char == open_char then
+        depth = depth + 1
+      elseif char == close_char then
+        depth = depth - 1
+        if depth == 0 then
+          return i
+        end
+      end
       i = i + 1
     end
   end
@@ -240,8 +300,74 @@ local function base_name(segment)
   return base
 end
 
-local function find_classes(text)
+-- `where` constraints may contain `:` and `class`; they are not part of the
+-- base list. Truncate the declaration segment at the first `where` clause.
+local function before_where(segment)
+  local init = 1
+  while true do
+    local found = segment:find("%f[%w_]where", init)
+    if not found then
+      return segment
+    end
+    local after = segment:sub(found + 5, found + 5)
+    if after == "" or not after:match("[%w_]") then
+      return segment:sub(1, found - 1)
+    end
+    init = found + 5
+  end
+end
+
+local CLASS_BOUNDARIES = {
+  ["]"] = true,
+  [";"] = true,
+  ["}"] = true,
+  ["{"] = true,
+}
+
+local CLASS_PREFIX_WORDS = {
+  ["record"] = true,
+  ["file"] = true,
+}
+
+-- A declaration's `class` keyword follows the line start or a modifier.
+-- This rejects `where T : class` (preceded by `:`) and avoids matching the
+-- constraint keyword as a class declaration.
+local function is_class_declaration(scan, pos)
+  local text = scan.text
+  local line_start = line_start_of(scan, pos)
+  local i = pos - 1
+  while i >= line_start do
+    local char = text:sub(i, i)
+    if not char:match("%s") then
+      break
+    end
+    i = i - 1
+  end
+  if i < line_start then
+    return true
+  end
+  local char = text:sub(i, i)
+  if CLASS_BOUNDARIES[char] then
+    return true
+  end
+  if not char:match("[%w_]") then
+    return false
+  end
+  local word_start = i
+  while word_start > line_start do
+    local previous = text:sub(word_start - 1, word_start - 1)
+    if not previous:match("[%w_]") then
+      break
+    end
+    word_start = word_start - 1
+  end
+  local word = text:sub(word_start, i)
+  return MODIFIERS[word] == true or CLASS_PREFIX_WORDS[word] == true
+end
+
+local function find_classes(scan)
   local classes = {}
+  local text = scan.text
   local init = 1
   local length = #text
   while init <= length do
@@ -250,18 +376,20 @@ local function find_classes(text)
       break
     end
     init = match_end + 1
-    if name and not is_ignored(text, match_start) then
-      local body_start = find_unquoted(text, match_end + 1, "{")
+    local declaration = not is_ignored(scan, match_start)
+      and is_class_declaration(scan, match_start)
+    if name and declaration then
+      local body_start = find_unquoted(scan, match_end + 1, "{")
       if body_start then
-        local body_end = match_pair(text, body_start, "{", "}") or length
+        local body_end = match_pair(scan, body_start, "{", "}") or length
         local segment = text:sub(match_end + 1, body_start - 1)
-        local base = base_name(segment)
+        local base = base_name(before_where(segment))
         classes[#classes + 1] = {
           name = name,
           kind = M.classify(base),
-          start_line = line_of(text, match_start),
-          end_line = line_of(text, body_end),
-          span_start = line_start_of(text, match_start),
+          start_line = line_of(scan, match_start),
+          end_line = line_of(scan, body_end),
+          span_start = line_start_of(scan, match_start),
           body_start = body_start,
           body_end = body_end,
         }
@@ -288,17 +416,15 @@ end
 
 -- A declaration has a type before the name. Calls, assignments, control flow
 -- and attribute names are rejected, since their prefix does not look like one.
-local function is_declaration_prefix(text, name_start)
-  local prefix = text:sub(line_start_of(text, name_start), name_start - 1)
+local function is_declaration_prefix(scan, name_start)
+  local text = scan.text
+  local prefix = text:sub(line_start_of(scan, name_start), name_start - 1)
   prefix = trim(prefix:gsub("%b[]", " "))
   local tail = trim(prefix:match("([^;{}]*)$") or prefix)
   if tail == "" then
     return false
   end
-  if tail:sub(-1) == "." then
-    return false
-  end
-  if tail:find("[=(]") then
+  if tail:sub(-1) == "." or tail:sub(-1) == "~" then
     return false
   end
   if tail:find("[%[%]]") or tail:find("[\"']") then
@@ -314,7 +440,13 @@ local function is_declaration_prefix(text, name_start)
   then
     return false
   end
-  local rest = strip_modifiers(tail)
+  -- Tuple return types contain parentheses; replace balanced groups with a
+  -- type placeholder before looking for calls and assignments.
+  local normalized = tail:gsub("%b()", " __tuple ")
+  if normalized:find("=") or normalized:find("%(") then
+    return false
+  end
+  local rest = strip_modifiers(normalized)
   if rest == "" then
     return false
   end
@@ -337,7 +469,36 @@ local function in_nested_body(pos, selected, classes)
   return false
 end
 
-local function collect_methods(text, selected, classes)
+-- Skips `where ...` clauses between the parameter list and the body.
+local function body_after_params(scan, params_end)
+  local text = scan.text
+  local length = #text
+  local i = params_end + 1
+  while i <= length do
+    local char = text:sub(i, i)
+    if char:match("%s") then
+      i = i + 1
+    elseif text:sub(i, i + 4) == "where" and not text:sub(i + 5, i + 5):match("[%w_]") then
+      i = i + 5
+      while i <= length do
+        local current = text:sub(i, i)
+        if current == "{" or current == ";" then
+          break
+        end
+        if current == "=" and text:sub(i + 1, i + 1) == ">" then
+          break
+        end
+        i = i + 1
+      end
+    else
+      break
+    end
+  end
+  return i
+end
+
+local function collect_methods(scan, selected, classes)
+  local text = scan.text
   local ranges = {}
   local implemented = {}
   local pos = selected.body_start + 1
@@ -348,7 +509,7 @@ local function collect_methods(text, selected, classes)
       break
     end
     local handled = false
-    local ignored = is_commented_or_string(text, name_start)
+    local ignored = inside_ignored(scan, name_start)
       or in_nested_body(name_start, selected, classes)
     if not ignored then
       local after_name = name_end + 1
@@ -365,21 +526,18 @@ local function collect_methods(text, selected, classes)
         end
       end
       if text:sub(after_name, after_name) == "(" then
-        local params_end = match_pair(text, after_name, "(", ")")
+        local params_end = match_pair(scan, after_name, "(", ")")
         if params_end then
           handled = true
           pos = params_end + 1
-          if not METHOD_SKIP_NAMES[name] and is_declaration_prefix(text, name_start) then
-            local start_line = line_of(text, name_start)
+          if not METHOD_SKIP_NAMES[name] and is_declaration_prefix(scan, name_start) then
+            local start_line = line_of(scan, name_start)
             local end_line = start_line
-            local body = params_end + 1
-            while body <= #text and text:sub(body, body):match("%s") do
-              body = body + 1
-            end
+            local body = body_after_params(scan, params_end)
             if text:sub(body, body) == "{" then
-              local close = match_pair(text, body, "{", "}")
+              local close = match_pair(scan, body, "{", "}")
               if close then
-                end_line = line_of(text, close)
+                end_line = line_of(scan, close)
               end
             end
             ranges[#ranges + 1] = { start_line = start_line, end_line = end_line }
@@ -466,14 +624,15 @@ local function resolve_impl(bufnr)
     return empty_context()
   end
   local text = table.concat(lines, "\n")
+  local scan = build_scan(text)
   local row, col = cursor_of(bufnr)
   local offset = cursor_offset(lines, text, row, col)
-  local classes = find_classes(text)
+  local classes = find_classes(scan)
   local selected = select_class(classes, offset)
   if not selected then
     return empty_context()
   end
-  local method_ranges, implemented = collect_methods(text, selected, classes)
+  local method_ranges, implemented = collect_methods(scan, selected, classes)
   return {
     class_name = selected.name,
     class_kind = selected.kind,
