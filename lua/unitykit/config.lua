@@ -12,6 +12,13 @@ M.defaults = {
 local valid_body = { block = true, line = true }
 local valid_access = { none = true, private = true, public = true, protected = true }
 
+local function notify_invalid(key, value)
+  vim.notify(
+    ("unitykit: invalid %s %s, using default"):format(key, tostring(value)),
+    vim.log.levels.WARN
+  )
+end
+
 function M.setup(opts)
   opts = opts or {}
   local cfg = vim.tbl_deep_extend("force", {}, M.defaults, opts)
@@ -21,7 +28,7 @@ function M.setup(opts)
     access = valid_access,
   }) do
     if cfg[key] ~= nil and not whitelist[cfg[key]] then
-      vim.notify(("unitykit: invalid %s %s, using default"):format(key, tostring(cfg[key])), vim.log.levels.WARN)
+      notify_invalid(key, cfg[key])
       cfg[key] = M.defaults[key]
     end
   end
@@ -30,12 +37,18 @@ function M.setup(opts)
     cfg.timeout_ms = M.defaults.timeout_ms
   end
 
-  cfg.filetypes = vim.list_extend({}, cfg.filetypes or M.defaults.filetypes)
+  if type(cfg.filetypes) ~= "table" then
+    notify_invalid("filetypes", cfg.filetypes)
+    cfg.filetypes = vim.list_extend({}, M.defaults.filetypes)
+  else
+    cfg.filetypes = vim.list_extend({}, cfg.filetypes)
+  end
 
   M.current = cfg
   return cfg
 end
 
+-- Returns the last configured table (read-only; do not mutate the returned table).
 function M.get()
   return M.current or M.setup()
 end
