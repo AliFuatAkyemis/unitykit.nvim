@@ -879,7 +879,7 @@ git commit -m "feat: add nvim-cmp source"
   - `require("unitykit").setup(opts: table|nil) -> Config` — config'i uygular, source'u bir kez kaydeder
   - `require("unitykit.health").check()` — `:checkhealth unitykit` tarafından çağrılır
 
-- [ ] **Step 1: Write failing `tests/setup_spec.lua`**
+- [x] **Step 1: Write failing `tests/setup_spec.lua`**
 
 ```lua
 local registered = 0
@@ -902,9 +902,9 @@ h.check(ok, "cmp yokken setup hata vermez")
 h.check(type(require("unitykit.health").check) == "function", "health.check var")
 ```
 
-- [ ] **Step 2: Run, verify fail.**
+- [x] **Step 2: Run, verify fail.**
 
-- [ ] **Step 3: Implement `lua/unitykit/init.lua`**
+- [x] **Step 3: Implement `lua/unitykit/init.lua`**
 
 ```lua
 local M = {}
@@ -922,7 +922,7 @@ end
 return M
 ```
 
-- [ ] **Step 4: Implement `lua/unitykit/health.lua`**
+- [x] **Step 4: Implement `lua/unitykit/health.lua`**
 
 `check()` içinde `vim.health.start("unitykit")`, ardından:
 
@@ -931,20 +931,20 @@ return M
 - `package.loaded["unitykit.completion.cmp"]` kayıtlı mı.
 - Aktif buffer: `project.root(bufnr)`, `vim.lsp.get_clients({ bufnr = bufnr })` adları, `context.resolve` kaynağı ve `class_kind`.
 
-- [ ] **Step 5: Write `doc/unitykit.txt`**
+- [x] **Step 5: Write `doc/unitykit.txt`**
 
 `:help unitykit` başlığı, `unitykit.setup()` seçenekleri, mesaj türleri, gereksinimler, `:checkhealth unitykit`. Vim help formatı (`*unitykit.txt*`, `*unitykit.setup()*` etiketleri).
 
-- [ ] **Step 6: Update `README.md`**
+- [x] **Step 6: Update `README.md`**
 
 "Düzenli durum" satırını `Faz 1 tamamlandı` yap; `setup` örneği ve `:checkhealth` satırı ekle; `blink.cmp` kullanıcıları için uyarı (Faz 2).
 
-- [ ] **Step 7: Run full suite**
+- [x] **Step 7: Run full suite**
 
 Run: `tests/run.sh`
 Expected: tüm spec'ler `FAIL` içermez, exit 0.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add lua/unitykit/init.lua lua/unitykit/health.lua doc/unitykit.txt README.md tests/setup_spec.lua
