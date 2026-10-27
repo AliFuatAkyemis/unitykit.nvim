@@ -41,6 +41,12 @@ local has_start = false
 for _, it in ipairs(all) do if it.word == "Start" then has_start = true end end
 h.check(has_start, "hide_implemented false -> Start gorunur")
 
+-- cfg.priority only reaches completion through sortText in `item.to_cmp_item`;
+-- the source priority itself is configured by the user in cmp's `sources` list.
+h.eq(all[1].sortText, "0" .. all[1].word, "priority sortText oncelik")
+local no_priority = cmp_source.items(buf, require("unitykit.config").setup({ priority = false }))
+h.eq(no_priority[1].sortText, nil, "priority false -> sortText yok")
+
 -- cursor inside method body
 vim.api.nvim_win_set_cursor(0, { 6, 8 })  -- 0-based 5, metot icinde
 h.eq(cmp_source.items(buf, cfg), {}, "metot icinde bos")
@@ -76,10 +82,8 @@ h.check(ok, "cmp yokken register hata vermez: " .. tostring(err))
 -- source table shape
 local source = cmp_source.source
 h.eq(source.get_trigger_characters(), {}, "tetikleyici karakter yok")
-h.eq(source.keyword_pattern, [[\%([A-Za-z_][A-Za-z0-9_]*\)\?]], "keyword pattern")
-h.eq(cmp_source.priority(cfg), 1000, "priority true -> 1000")
-h.eq(cmp_source.priority(require("unitykit.config").setup({ priority = false })), 500,
-  "priority false -> 500")
+-- cmp invokes the callback with `:`; a plain `keyword_pattern` field is ignored.
+h.eq(source:get_keyword_pattern(), [[\%([A-Za-z_][A-Za-z0-9_]*\)\?]], "keyword pattern")
 
 -- scratch (nofile) buffers are skipped
 local scratch = h.new_buf({
@@ -92,12 +96,40 @@ vim.api.nvim_buf_set_name(scratch, dir .. "/Assets/Scratch.cs")
 vim.api.nvim_win_set_cursor(0, { 3, 0 })
 h.eq(cmp_source.items(scratch, cfg), {}, "scratch buffer bos")
 
+-- non-Unity class inside a Unity project
+local plain = h.new_buf({
+  "public class Plain",
+  "{",
+  "}",
+}, "cs")
+vim.bo[plain].buftype = ""
+vim.api.nvim_buf_set_name(plain, dir .. "/Assets/Plain.cs")
+vim.api.nvim_win_set_cursor(0, { 3, 0 })
+h.eq(cmp_source.items(plain, cfg), {}, "unity sinifi olmayan baglam bos")
+
+-- unmodifiable buffers are skipped
+local locked = h.new_buf({
+  "public class Locked : MonoBehaviour",
+  "{",
+  "}",
+}, "cs")
+vim.bo[locked].buftype = ""
+vim.api.nvim_buf_set_name(locked, dir .. "/Assets/Locked.cs")
+vim.api.nvim_win_set_cursor(0, { 3, 0 })
+vim.bo[locked].modifiable = false
+h.eq(cmp_source.items(locked, cfg), {}, "degistirilemez buffer bos")
+vim.bo[locked].modifiable = true
+
 -- is_available: word char immediately before the cursor
+vim.api.nvim_set_current_buf(scratch)
 vim.api.nvim_buf_set_lines(scratch, 0, -1, false, { "        Aw" })
 vim.api.nvim_win_set_cursor(0, { 1, 10 })
 h.check(source.is_available(), "kelime karakterinden sonra available")
 vim.api.nvim_win_set_cursor(0, { 1, 0 })
 h.check(not source.is_available(), "satir basinda available degil")
+vim.api.nvim_buf_set_lines(scratch, 0, -1, false, { "        _x" })
+vim.api.nvim_win_set_cursor(0, { 1, 9 })
+h.check(source.is_available(), "alt cizgi sonrasi available")
 
 -- complete callback shape (never throws on an unusable buffer)
 local result
@@ -134,10 +166,9 @@ package.loaded["cmp"] = {
 }
 local registered = cmp_source.register(require("unitykit.config").setup({ priority = false }))
 h.check(registered, "cmp varken register true doner")
-h.eq(#registrations, 1, "kaynak tam bir kez kaydedilir")
+h.eq(#registrations, 1, "register cagrisi cmp'ye bir kez kaydeder")
 h.eq(registrations[1] and registrations[1].name, "unitykit", "kaynak adi unitykit")
 h.eq(registrations[1] and registrations[1].source, cmp_source.source,
   "source tablosu kaydedilir")
-h.eq(cmp_source.source.priority, 500, "register priority ayarini uygular")
 
 h.finish()

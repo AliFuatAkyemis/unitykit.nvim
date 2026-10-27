@@ -9,14 +9,7 @@ local project = require("unitykit.project")
 
 local M = {}
 
-M.keyword_pattern = [[\%([A-Za-z_][A-Za-z0-9_]*\)\?]]
-
----Returns the cmp priority for a config: explicit completion first.
----@param cfg table Resolved config.
----@return integer priority
-function M.priority(cfg)
-  return cfg.priority and 1000 or 500
-end
+M.KEYWORD_PATTERN = [[\%([A-Za-z_][A-Za-z0-9_]*\)\?]]
 
 ---Collects completion items for a buffer, or `{}` when the cursor is not in a
 ---completion position. Guards run cheapest first.
@@ -106,20 +99,23 @@ M.source = {
     return {}
   end,
 
-  keyword_pattern = M.keyword_pattern,
-  priority = 1000,
+  -- cmp calls this callback with `:`; a plain `keyword_pattern` field is not read.
+  ---@return string
+  get_keyword_pattern = function(_)
+    return M.KEYWORD_PATTERN
+  end,
 }
 
 ---Registers the source with nvim-cmp. Silently returns false when unavailable.
----@param cfg table|nil Resolved config.
+---Per-source priority is not a cmp source field: the user must configure it in
+---`sources = { { name = "unitykit", priority = 1000 } }`.
+---@param cfg table|nil Resolved config (kept for the call site in `init.setup`).
 ---@return boolean registered
-function M.register(cfg)
-  cfg = cfg or config.get()
+function M.register(cfg) --luacheck: ignore cfg
   local ok, cmp = pcall(require, "cmp")
   if not ok or type(cmp) ~= "table" or type(cmp.register_source) ~= "function" then
     return false
   end
-  M.source.priority = M.priority(cfg)
   return pcall(cmp.register_source, "unitykit", M.source)
 end
 

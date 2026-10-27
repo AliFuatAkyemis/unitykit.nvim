@@ -758,7 +758,7 @@ git commit -m "feat: resolve Unity class kind via LSP hover and symbol chain"
   - `require("unitykit.completion.cmp").register(cfg: Config)` — `pcall(require, "cmp").register_source("unitykit", source)`; cmp yoksa sessiz döner
   - `require("unitykit.completion.cmp").source` — cmp source tablosu
 
-- [ ] **Step 1: Write failing `tests/source_spec.lua`**
+- [x] **Step 1: Write failing `tests/source_spec.lua`**
 
 ```lua
 package.loaded["unitykit.context.lsp"] = { resolve = function() end }
@@ -828,9 +828,9 @@ local ok, err = pcall(cmp_source.register, cfg)
 h.check(ok, "cmp yokken register hata vermez: " .. tostring(err))
 ```
 
-- [ ] **Step 2: Run, verify fail.**
+- [x] **Step 2: Run, verify fail.**
 
-- [ ] **Step 3: Implement `items(bufnr, cfg)`**
+- [x] **Step 3: Implement `items(bufnr, cfg)`**
 
 Guard sırası:
 
@@ -853,9 +853,9 @@ callback({ items = M.items(bufnr, require("unitykit.config").get()), isIncomplet
 
 `is_available` -> buffer'da imleçten önce harf veya `_` var mı (`vim.regex` kullanmadan `line:sub(1, col):match("[%w_]$") ~= nil`).
 
-- [ ] **Step 4: Run tests, verify pass.**
+- [x] **Step 4: Run tests, verify pass.**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add lua/unitykit/completion/cmp.lua tests/source_spec.lua
