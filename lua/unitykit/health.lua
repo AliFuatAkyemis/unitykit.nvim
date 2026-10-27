@@ -1,6 +1,6 @@
 -- `:checkhealth unitykit` support. Every section degrades gracefully: no
--- cmp, no LSP and no Unity root are reported, never raised.
-local config = require("unitykit.config")
+-- cmp, no LSP and no Unity root are reported, never raised. The check is
+-- read-only: it never resolves context or sends LSP requests.
 local project = require("unitykit.project")
 
 local M = {}
@@ -91,31 +91,27 @@ local function check_buffer(bufnr)
 end
 
 local function check_context(bufnr, root)
-  local cfg = config.get()
-  local filetype = vim.bo[bufnr].filetype
   if not root then
     vim.health.info("Context: skipped, the buffer is not inside a Unity project")
     return
   end
-  if not vim.tbl_contains(cfg.filetypes, filetype) then
-    vim.health.info(("Context: skipped, filetype %q is not in config.filetypes"):format(filetype))
+
+  -- Read-only: a cached entry exists only after completion resolved it. Never
+  -- call context.resolve here, since that would fire an LSP request.
+  local cached = require("unitykit.context.cache").get(bufnr)
+  if type(cached) ~= "table" then
+    vim.health.info("Context: not resolved yet (use completion in a C# buffer)")
     return
   end
 
-  local ok, ctx = pcall(require("unitykit.context").resolve, bufnr, cfg)
-  if not ok or type(ctx) ~= "table" then
-    vim.health.error("Context: resolution failed")
-    return
-  end
-
-  if ctx.source then
-    vim.health.ok("Context source: " .. tostring(ctx.source))
+  if cached.source then
+    vim.health.ok("Context source: " .. tostring(cached.source))
   else
     vim.health.warn("Context source: unresolved")
   end
 
-  if ctx.class_kind then
-    vim.health.ok(("Class: %s (%s)"):format(tostring(ctx.class_name or "?"), ctx.class_kind))
+  if cached.class_kind then
+    vim.health.ok(("Class: %s (%s)"):format(tostring(cached.class_name or "?"), cached.class_kind))
   else
     vim.health.info("Class: the cursor is not inside a recognised Unity class")
   end

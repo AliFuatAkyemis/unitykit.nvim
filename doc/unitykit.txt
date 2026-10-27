@@ -66,9 +66,9 @@ require("unitykit").setup({opts})                       *unitykit.setup()*
 
   Applies `opts` over the defaults and registers the `unitykit` source with
   nvim-cmp the first time it runs. Later calls only replace the
-  configuration; the source is never registered twice. The call is safe
-  when nvim-cmp is not installed or not yet loaded; the source simply stays
-  unregistered.
+  configuration; a registered source is never registered twice. The call is
+  safe when nvim-cmp is not installed or not yet loaded: registration fails
+  silently and the next `setup()` call retries it.
 
   `opts` is an optional table; see |unitykit-config|. Returns the merged
   configuration table.
@@ -166,8 +166,9 @@ The prefix already typed is filtered by nvim-cmp itself.
     buffer is not inside a Unity project)
   - the attached C# language server names, or that the regex fallback is
     active
-  - the resolved context source (`lsp` or `fallback`) and the detected
-    class name and kind, when the cursor is inside a recognised class
+  - the cached context source (`lsp` or `fallback`) and the class name and
+    kind, when completion already resolved the buffer; the check itself
+    never resolves context or sends language server requests
 
 ==============================================================================
 7. Limitations                                  *unitykit-limitations*
