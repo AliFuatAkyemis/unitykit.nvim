@@ -439,22 +439,13 @@ local function cursor_offset(lines, text, row, col)
   return offset
 end
 
-local function select_class(classes, offset, row, text)
+local function select_class(classes, offset)
   local best
   for _, class in ipairs(classes) do
     if offset >= class.span_start and offset <= class.body_end then
       if not best or (class.body_end - class.span_start) < (best.body_end - best.span_start) then
         best = class
       end
-    end
-  end
-  if not best and #classes == 1 then
-    local only = classes[1]
-    -- A cursor in the file preamble still gets the only class, provided the
-    -- class uses a block body (an inline `class A { }` is not picked up).
-    local body_line = line_of(text, only.body_start)
-    if row < only.start_line and body_line > only.start_line then
-      best = only
     end
   end
   return best
@@ -478,7 +469,7 @@ local function resolve_impl(bufnr)
   local row, col = cursor_of(bufnr)
   local offset = cursor_offset(lines, text, row, col)
   local classes = find_classes(text)
-  local selected = select_class(classes, offset, row, text)
+  local selected = select_class(classes, offset)
   if not selected then
     return empty_context()
   end

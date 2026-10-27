@@ -25,6 +25,7 @@ local buf = h.new_buf({
   "    void Update() { }",                    -- 10
   "}",                                        -- 11
 }, "cs")
+vim.api.nvim_win_set_cursor(0, { 4, 0 })
 
 local ctx = fallback.resolve(buf)
 h.eq(ctx.class_name, "Deneme", "sinif adi")
@@ -73,6 +74,17 @@ h.eq(pctx.class_name, "Plain", "sinif adi yine bulunur")
 local outside = h.new_buf({ "using UnityEngine;", "class A : MonoBehaviour { }" }, "cs")
 vim.api.nvim_win_set_cursor(0, { 1, 0 })
 h.eq(fallback.resolve(outside).class_name, nil, "sinif disinda nil")
+
+-- regression: one class, cursor above the declaration is still outside
+local above = h.new_buf({
+  "using UnityEngine;",
+  "",
+  "public class Solo : MonoBehaviour",
+  "{",
+  "}",
+}, "cs")
+vim.api.nvim_win_set_cursor(0, { 1, 0 })
+h.eq(fallback.resolve(above).class_name, nil, "bildirim ustunde sinif yok")
 
 -- ---------------------------------------------------------------------------
 -- Method bodies, declaration lines and body-less methods.
