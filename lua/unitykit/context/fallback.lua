@@ -39,6 +39,16 @@ local METHOD_SKIP_NAMES = {
   ["set"] = true,
 }
 
+-- Property/event accessor names; their block bodies are member bodies and must
+-- not offer completion, but they are not methods either.
+local ACCESSOR_NAMES = {
+  ["get"] = true,
+  ["set"] = true,
+  ["init"] = true,
+  ["add"] = true,
+  ["remove"] = true,
+}
+
 local PREFIX_KEYWORDS = {
   ["return"] = true,
   ["new"] = true,
@@ -497,6 +507,37 @@ local function body_after_params(scan, params_end)
   return i
 end
 
+-- Computes the exclusion range (declaration line through body close) for a
+-- member that has a parameter list. Body-less members collapse to one line.
+local function member_body_range(scan, name_start, params_end)
+  local text = scan.text
+  local start_line = line_of(scan, name_start)
+  local end_line = start_line
+  local body = body_after_params(scan, params_end)
+  if text:sub(body, body) == "{" then
+    local close = match_pair(scan, body, "{", "}")
+    if close then
+      end_line = line_of(scan, close)
+    end
+  end
+  return { start_line = start_line, end_line = end_line }
+end
+
+-- A constructor declaration has the class name and a modifier-only (or empty)
+-- prefix; `new Foo()` and `Foo f = new Foo()` are rejected.
+local function is_constructor_declaration(scan, name_start)
+  local text = scan.text
+  local prefix = text:sub(line_start_of(scan, name_start), name_start - 1)
+  prefix = trim(prefix:gsub("%b[]", " "))
+  if prefix:find("=", 1, true) then
+    return false
+  end
+  if prefix:find("%f[%w_]new%f[^%w_]") then
+    return false
+  end
+  return strip_modifiers(prefix) == ""
+end
+
 local function collect_methods(scan, selected, classes)
   local text = scan.text
   local ranges = {}
@@ -530,19 +571,29 @@ local function collect_methods(scan, selected, classes)
         if params_end then
           handled = true
           pos = params_end + 1
-          if not METHOD_SKIP_NAMES[name] and is_declaration_prefix(scan, name_start) then
-            local start_line = line_of(scan, name_start)
-            local end_line = start_line
-            local body = body_after_params(scan, params_end)
-            if text:sub(body, body) == "{" then
-              local close = match_pair(scan, body, "{", "}")
-              if close then
-                end_line = line_of(scan, close)
-              end
-            end
-            ranges[#ranges + 1] = { start_line = start_line, end_line = end_line }
+          local finalizer = name_start > 1
+            and text:sub(name_start - 1, name_start - 1) == "~"
+            and not inside_ignored(scan, name_start - 1)
+          if finalizer then
+            -- `~ClassName()` is a finalizer body, never a method.
+            ranges[#ranges + 1] = member_body_range(scan, name_start, params_end)
+          elseif name == selected.name and is_constructor_declaration(scan, name_start) then
+            -- Constructor body: excluded, but not a method name.
+            ranges[#ranges + 1] = member_body_range(scan, name_start, params_end)
+          elseif not METHOD_SKIP_NAMES[name] and is_declaration_prefix(scan, name_start) then
+            ranges[#ranges + 1] = member_body_range(scan, name_start, params_end)
             implemented[name] = true
           end
+        end
+      elseif ACCESSOR_NAMES[name] and text:sub(after_name, after_name) == "{" then
+        local close = match_pair(scan, after_name, "{", "}")
+        if close then
+          handled = true
+          pos = close + 1
+          ranges[#ranges + 1] = {
+            start_line = line_of(scan, name_start),
+            end_line = line_of(scan, close),
+          }
         end
       end
     end

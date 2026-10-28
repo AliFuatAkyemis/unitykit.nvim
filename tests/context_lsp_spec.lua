@@ -146,4 +146,101 @@ h.eq(
 )
 h.check(async_ctx and async_ctx.implemented.Start, "async Start mevcut")
 
+-- namespace-qualified base: the last segment is queried and the symbol with a
+-- matching containerName is preferred over an earlier same-named symbol.
+local right_file = vim.fn.tempname() .. "_Right.cs"
+local wrong_file = vim.fn.tempname() .. "_Wrong.cs"
+do
+  local f = io.open(right_file, "w")
+  f:write("public class BaseEnemy : MonoBehaviour\n{\n}\n")
+  f:close()
+  f = io.open(wrong_file, "w")
+  f:write("public class BaseEnemy : ScriptableObject\n{\n}\n")
+  f:close()
+end
+local right_uri = vim.uri_from_fname(right_file)
+local wrong_uri = vim.uri_from_fname(wrong_file)
+
+local workspace_query
+vim.lsp.get_clients = function()
+  return {
+    {
+      server_capabilities = { workspaceSymbolProvider = true },
+      request = function(_, method, params, handler)
+        if method == "textDocument/documentSymbol" then
+          handler(nil, {
+            {
+              name = "Foo",
+              kind = 5,
+              range = {
+                start = { line = 0, character = 0 },
+                ["end"] = { line = 2, character = 1 },
+              },
+            },
+          })
+        elseif method == "textDocument/hover" then
+          handler(nil, {
+            contents = {
+              kind = "markdown",
+              value = "```csharp\nclass Game.BaseEnemy\n```",
+            },
+          })
+        elseif method == "workspace/symbol" then
+          workspace_query = params.query
+          handler(nil, {
+            {
+              name = "BaseEnemy",
+              kind = 5,
+              containerName = "Wrong",
+              location = {
+                uri = wrong_uri,
+                range = {
+                  start = { line = 0, character = 0 },
+                  ["end"] = { line = 0, character = 10 },
+                },
+              },
+            },
+            {
+              name = "BaseEnemy",
+              kind = 5,
+              containerName = "Game",
+              location = {
+                uri = right_uri,
+                range = {
+                  start = { line = 0, character = 0 },
+                  ["end"] = { line = 0, character = 10 },
+                },
+              },
+            },
+          })
+        end
+      end,
+    },
+  }
+end
+local ns_buf = h.new_buf({
+  "public class Foo : Game.BaseEnemy", -- 0
+  "{",                                 -- 1
+  "}",                                 -- 2
+}, "cs")
+vim.api.nvim_win_set_cursor(0, { 2, 0 })
+local ns_calls, ns_ctx = 0, "sentinel"
+local ns_ok = pcall(
+  lsp.resolve,
+  ns_buf,
+  require("unitykit.config").setup({ timeout_ms = 500 }),
+  function(ctx)
+    ns_calls = ns_calls + 1
+    ns_ctx = ctx
+  end
+)
+vim.wait(500, function()
+  return ns_calls > 0
+end)
+vim.lsp.get_clients = real_get_clients
+h.check(ns_ok, "namespace resolve hata vermez")
+h.eq(workspace_query, "BaseEnemy", "sorgu son segment")
+h.eq(ns_calls, 1, "namespace done tam bir kez")
+h.eq(ns_ctx and ns_ctx.class_kind, "monobehaviour", "namespace base cozulur")
+
 h.finish()

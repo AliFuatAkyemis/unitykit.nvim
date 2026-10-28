@@ -55,9 +55,9 @@ local function check_version()
 end
 
 local function check_cmp()
-  -- Read-only presence probe. This is the only `require("cmp")` outside
-  -- completion/cmp.lua; it is pcall-guarded and registers nothing.
-  if pcall(require, "cmp") then
+  -- Read-only presence probe; delegates to completion/cmp.lua so this module
+  -- never touches `require("cmp")` directly.
+  if require("unitykit.completion.cmp").is_available() then
     vim.health.ok("nvim-cmp is installed")
     return true
   end

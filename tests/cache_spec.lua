@@ -169,4 +169,84 @@ cache.set(buf3, { class_name = "C", source = "fallback" })
 vim.api.nvim_buf_delete(buf3, { force = true })
 h.eq(cache.entries[buf3], nil, "wipeout cache kaydini siler")
 
+-- ---------------------------------------------------------------------------
+-- Cursor-dependent cache: nested and sibling classes, no edit between moves.
+-- ---------------------------------------------------------------------------
+local nested_lsp_calls = {}
+package.loaded["unitykit.context.lsp"] = {
+  resolve = function(bufnr, _, done)
+    local fb = require("unitykit.context.fallback").resolve(bufnr)
+    nested_lsp_calls[#nested_lsp_calls + 1] = fb.class_name
+    done({
+      class_name = fb.class_name,
+      class_kind = fb.class_kind,
+      class_range = fb.class_range,
+      method_ranges = fb.method_ranges,
+      implemented = fb.implemented,
+      source = "lsp",
+    })
+  end,
+}
+package.loaded["unitykit.context"] = nil
+local context2 = require("unitykit.context")
+
+local nested = h.new_buf({
+  "public class Outer : MonoBehaviour",          -- 0
+  "{",                                           -- 1
+  "    public class Inner : ScriptableObject",   -- 2
+  "    {",                                       -- 3
+  "    }",                                       -- 4
+  "}",                                           -- 5
+}, "cs")
+
+-- Outer first
+vim.api.nvim_win_set_cursor(0, { 2, 0 })
+local outer_ctx = context2.resolve(nested, require("unitykit.config").setup())
+h.eq(outer_ctx.class_name, "Outer", "dis sinif secilir")
+h.eq(outer_ctx.class_kind, "monobehaviour", "Outer kind")
+
+-- Move to Inner without an edit: Inner's kind, not Outer's
+vim.api.nvim_win_set_cursor(0, { 4, 8 })
+local inner_ctx = context2.resolve(nested, require("unitykit.config").setup())
+h.eq(inner_ctx.class_name, "Inner", "ic sinif secilir")
+h.eq(inner_ctx.class_kind, "scriptableobject", "Inner kind")
+
+-- Back to Outer without an edit: cached Outer kind, source lsp
+vim.api.nvim_win_set_cursor(0, { 2, 0 })
+local outer_again = context2.resolve(nested, require("unitykit.config").setup())
+h.eq(outer_again.class_name, "Outer", "geri Outer")
+h.eq(outer_again.class_kind, "monobehaviour", "geri Outer kind")
+h.eq(outer_again.source, "lsp", "cached kind source lsp")
+
+-- same class at the same tick -> exactly one LSP request for Outer
+local outer_calls = 0
+for _, name in ipairs(nested_lsp_calls) do
+  if name == "Outer" then
+    outer_calls = outer_calls + 1
+  end
+end
+h.eq(outer_calls, 1, "Outer icin tek LSP istegi")
+
+-- two sibling classes in one file, no edit between resolves
+local siblings = h.new_buf({
+  "public class A : MonoBehaviour",    -- 0
+  "{",                                 -- 1
+  "}",                                 -- 2
+  "public class B : ScriptableObject", -- 3
+  "{",                                 -- 4
+  "}",                                 -- 5
+}, "cs")
+vim.api.nvim_win_set_cursor(0, { 2, 0 })
+h.eq(
+  context2.resolve(siblings, require("unitykit.config").setup()).class_kind,
+  "monobehaviour",
+  "kardes A kind"
+)
+vim.api.nvim_win_set_cursor(0, { 5, 0 })
+h.eq(
+  context2.resolve(siblings, require("unitykit.config").setup()).class_kind,
+  "scriptableobject",
+  "kardes B kind"
+)
+
 h.finish()

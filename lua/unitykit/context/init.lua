@@ -1,5 +1,7 @@
--- Context orchestration: the regex fallback answers immediately and a valid
--- LSP answer replaces it asynchronously. Never blocks the caller.
+-- Context orchestration: the regex fallback answers immediately on every call
+-- and a valid LSP answer fills in the class kind asynchronously. Never blocks
+-- the caller. The cache is keyed by class (name + start line) so moving the
+-- cursor between nested or sibling classes without editing stays correct.
 local cache = require("unitykit.context.cache")
 local fallback = require("unitykit.context.fallback")
 local project = require("unitykit.project")
@@ -17,7 +19,11 @@ local function current_tick(bufnr)
   return nil
 end
 
-local function request_lsp(bufnr, cfg, pending_tick)
+-- Dispatches one LSP resolution for a class key. The result is stored under
+-- the class key captured here, so a late answer for a stale tick or a
+-- different class never overwrites anything.
+local function request_lsp(bufnr, cfg, class_key)
+  local dispatch_tick = current_tick(bufnr)
   local ok, lsp = pcall(require, "unitykit.context.lsp")
   if not ok or type(lsp) ~= "table" or type(lsp.resolve) ~= "function" then
     return
@@ -33,18 +39,20 @@ local function request_lsp(bufnr, cfg, pending_tick)
       return
     end
     -- The buffer was edited during the round-trip: the answer is stale.
-    if pending_tick == nil or current_tick(bufnr) ~= pending_tick then
+    if dispatch_tick == nil or current_tick(bufnr) ~= dispatch_tick then
       return
     end
-    -- The entry was replaced or invalidated meanwhile.
-    if not cache.pending(bufnr) then
+    -- The request for this class was superseded or already answered.
+    if not cache.pending(bufnr, class_key) then
       return
     end
-    cache.set(bufnr, lsp_ctx)
+    cache.store_kind(bufnr, class_key, lsp_ctx.class_kind)
   end)
 end
 
----Resolves the context for a buffer, returning the fallback immediately.
+---Resolves the context for a buffer. The fallback result is recomputed on
+---every call so cursor movement is honoured; a previously resolved kind (from
+---the language server) is attached under the current class key when known.
 ---@param bufnr integer|nil
 ---@param cfg table
 ---@return unitykit.Context
@@ -54,14 +62,23 @@ function M.resolve(bufnr, cfg)
     bufnr = vim.api.nvim_get_current_buf()
   end
 
-  local cached = cache.get(bufnr)
-  if cached then
-    return cached
+  local ctx = fallback.resolve(bufnr)
+  if ctx.class_name == nil or ctx.class_range == nil then
+    return ctx
   end
 
-  local ctx = fallback.resolve(bufnr)
-  cache.set_pending(bufnr, ctx)
-  request_lsp(bufnr, cfg, current_tick(bufnr))
+  local class_key = ctx.class_name .. ":" .. ctx.class_range.start_line
+  local kind = cache.get_kind(bufnr, class_key)
+  if kind ~= nil then
+    ctx.class_kind = kind
+    ctx.source = "lsp"
+    return ctx
+  end
+
+  if not cache.pending(bufnr, class_key) then
+    cache.set_pending(bufnr, ctx)
+    request_lsp(bufnr, cfg, class_key)
+  end
   return ctx
 end
 
@@ -71,7 +88,7 @@ function M.invalidate(bufnr)
   cache.invalidate(bufnr)
 end
 
----Reports whether a 0-based row is inside the class body but outside methods.
+---Reports whether a 0-based row is inside the class body but outside members.
 ---@param ctx unitykit.Context
 ---@param row integer 0-based line number
 ---@return boolean

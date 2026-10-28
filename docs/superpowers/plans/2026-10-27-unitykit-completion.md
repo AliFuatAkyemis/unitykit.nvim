@@ -996,6 +996,13 @@ git add docs/superpowers/specs/2026-10-27-unitykit-completion-design.md
 git commit -m "docs: record phase 1 manual verification"
 ```
 
+> **Final review fixes:** corrected Editor modifiers against UnityCsReference
+> (public/protected override vs native dispatch); made the context cache
+> cursor-dependent per class key; excluded constructor, finalizer and
+> block-bodied property-accessor bodies from completion; resolved
+> namespace-qualified base types via the last segment with a containerName
+> preference; delegated the health cmp probe to `completion/cmp.lua`.
+
 ---
 
 ## Self-Review

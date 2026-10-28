@@ -171,4 +171,61 @@ h.eq(registrations[1] and registrations[1].name, "unitykit", "kaynak adi unityki
 h.eq(registrations[1] and registrations[1].source, cmp_source.source,
   "source tablosu kaydedilir")
 
+-- cursor inside a constructor body -> empty
+local ctor = h.new_buf({
+  "using UnityEngine;",                    -- 0
+  "public class Enemy : MonoBehaviour",    -- 1
+  "{",                                     -- 2
+  "    public Enemy()",                    -- 3
+  "    {",                                 -- 4
+  "        _hp = 10;",                     -- 5
+  "    }",                                 -- 6
+  "}",                                     -- 7
+}, "cs")
+vim.bo[ctor].buftype = ""
+vim.api.nvim_buf_set_name(ctor, dir .. "/Assets/Enemy.cs")
+vim.api.nvim_win_set_cursor(0, { 6, 8 })  -- 0-based 5, inside constructor body
+h.eq(cmp_source.items(ctor, cfg), {}, "constructor govdesinde bos")
+
+-- cursor inside a block-bodied property setter -> empty
+local prop = h.new_buf({
+  "using UnityEngine;",                 -- 0
+  "public class Prop : MonoBehaviour",  -- 1
+  "{",                                  -- 2
+  "    int _value;",                    -- 3
+  "    public int Value",               -- 4
+  "    {",                              -- 5
+  "        get { return _value; }",     -- 6
+  "        set { _value = value; }",    -- 7
+  "    }",                              -- 8
+  "}",                                  -- 9
+}, "cs")
+vim.bo[prop].buftype = ""
+vim.api.nvim_buf_set_name(prop, dir .. "/Assets/Prop.cs")
+vim.api.nvim_win_set_cursor(0, { 8, 12 })  -- 0-based 7, inside setter body
+h.eq(cmp_source.items(prop, cfg), {}, "property setter govdesinde bos")
+
+-- cursor inside a nested class -> that class's messages (non-empty)
+local nested = h.new_buf({
+  "using UnityEngine;",                          -- 0
+  "public class Outer : MonoBehaviour",          -- 1
+  "{",                                           -- 2
+  "    public class Inner : ScriptableObject",   -- 3
+  "    {",                                       -- 4
+  "        // inside inner",                     -- 5
+  "    }",                                       -- 6
+  "}",                                           -- 7
+}, "cs")
+vim.bo[nested].buftype = ""
+vim.api.nvim_buf_set_name(nested, dir .. "/Assets/Nested.cs")
+vim.api.nvim_win_set_cursor(0, { 6, 8 })  -- 0-based 5, inside Inner body
+local nested_items = cmp_source.items(nested, cfg)
+h.check(#nested_items > 0, "nested sinif ici oneriler var")
+local nested_words = {}
+for _, it in ipairs(nested_items) do
+  nested_words[it.word] = true
+end
+h.check(nested_words.Reset, "nested sinif kendi mesajlari (ScriptableObject Reset)")
+h.check(not nested_words.Start, "nested sinifta MonoBehaviour Start yok")
+
 h.finish()

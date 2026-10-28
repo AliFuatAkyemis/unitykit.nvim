@@ -202,7 +202,48 @@ vim.api.nvim_win_set_cursor(0, { 6, 4 })
 local fin = fallback.resolve(finalizer)
 h.check(not fin.implemented.Finalizer, "finalizer metot degil")
 h.check(fin.implemented.Start, "finalizer sinifinda Start")
-h.eq(#fin.method_ranges, 1, "finalizer metot sayisi")
+h.eq(#fin.method_ranges, 2, "finalizer govdesi + Start govdesi")
+h.eq(fin.method_ranges[1], { start_line = 2, end_line = 4 }, "finalizer govdesi araligi")
+
+-- ---------------------------------------------------------------------------
+-- Constructor and property-accessor bodies are excluded (member bodies).
+-- ---------------------------------------------------------------------------
+local constructor = h.new_buf({
+  "public class Enemy : MonoBehaviour", -- 0
+  "{",                                  -- 1
+  "    public Enemy()",                 -- 2
+  "    {",                              -- 3
+  "        _hp = 10;",                  -- 4
+  "    }",                              -- 5
+  "    void Start() { }",               -- 6
+  "}",                                  -- 7
+}, "cs")
+vim.api.nvim_win_set_cursor(0, { 6, 4 })
+local ctor = fallback.resolve(constructor)
+h.check(not ctor.implemented.Enemy, "constructor metot degil")
+h.check(ctor.implemented.Start, "constructor sinifinda Start")
+h.eq(#ctor.method_ranges, 2, "constructor govdesi + Start govdesi")
+h.eq(ctor.method_ranges[1], { start_line = 2, end_line = 5 }, "constructor govdesi araligi")
+
+local property = h.new_buf({
+  "public class Prop : MonoBehaviour",  -- 0
+  "{",                                  -- 1
+  "    int _value;",                    -- 2
+  "    public int Value",               -- 3
+  "    {",                              -- 4
+  "        get { return _value; }",     -- 5
+  "        set { _value = value; }",    -- 6
+  "    }",                              -- 7
+  "}",                                  -- 8
+}, "cs")
+vim.api.nvim_win_set_cursor(0, { 7, 8 })
+local prop = fallback.resolve(property)
+h.check(not prop.implemented.Value, "property metot degil")
+h.check(not prop.implemented.get, "get accessor metot degil")
+h.check(not prop.implemented.set, "set accessor metot degil")
+h.eq(#prop.method_ranges, 2, "get ve set accessor govdeleri")
+h.eq(prop.method_ranges[1], { start_line = 5, end_line = 5 }, "get accessor govdesi")
+h.eq(prop.method_ranges[2], { start_line = 6, end_line = 6 }, "set accessor govdesi")
 
 -- ---------------------------------------------------------------------------
 -- Sibling classes and nested-class method isolation.

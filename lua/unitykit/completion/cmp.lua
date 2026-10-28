@@ -11,6 +11,21 @@ local M = {}
 
 M.KEYWORD_PATTERN = [[\%([A-Za-z_][A-Za-z0-9_]*\)\?]]
 
+-- Cached probe for whether nvim-cmp is installed and usable. The pcall result
+-- is memoized so health checks and any other caller share one probe.
+local cmp_installed
+
+---Reports whether nvim-cmp is installed (cached pcall probe). Reads nothing
+---but `require("cmp")` and registers nothing.
+---@return boolean
+function M.is_available()
+  if cmp_installed == nil then
+    local ok, cmp = pcall(require, "cmp")
+    cmp_installed = ok and type(cmp) == "table" and type(cmp.register_source) == "function"
+  end
+  return cmp_installed
+end
+
 ---Collects completion items for a buffer, or `{}` when the cursor is not in a
 ---completion position. Guards run cheapest first.
 ---@param bufnr integer
@@ -54,7 +69,7 @@ end
 
 ---Reports whether the cursor directly follows a word character.
 ---@return boolean
-function M.is_available()
+function M.has_words_before()
   local ok, cursor = pcall(vim.api.nvim_win_get_cursor, 0)
   if not ok then
     return false
@@ -91,7 +106,7 @@ M.source = {
 
   ---@return boolean
   is_available = function()
-    return M.is_available()
+    return M.has_words_before()
   end,
 
   ---@return string[]

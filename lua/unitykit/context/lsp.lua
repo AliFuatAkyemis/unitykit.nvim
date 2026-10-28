@@ -49,6 +49,22 @@ function M.strip_generics(name)
   return trim(name)
 end
 
+---Splits a dotted type name into its namespace prefix and last segment.
+---`Game.BaseEnemy` -> (`"Game"`, `"BaseEnemy"`); `BaseEnemy` -> (`nil`, `"BaseEnemy"`).
+---@param name string
+---@return string|nil prefix
+---@return string segment
+function M.split_qualified(name)
+  if type(name) ~= "string" then
+    return nil, ""
+  end
+  local prefix, segment = name:match("^(.*)%.([%w_]+)$")
+  if segment then
+    return prefix, segment
+  end
+  return nil, name
+end
+
 -- Splits a base list on commas, but only outside generic argument lists, so
 -- `Base<int, string>` stays one entry.
 local function split_base_list(text)
@@ -243,23 +259,41 @@ local function select_class(nodes, position, best)
   return best
 end
 
+-- Collects the class's member-body ranges and its implemented method names.
+-- `ranges` covers every descendant symbol with a body (methods, constructors,
+-- property accessors, fields, ...) except nested class declarations, so
+-- completion stays off inside any member body but stays on inside a nested
+-- class. `implemented` only counts real methods.
 local function method_info(class_sym)
   local implemented = {}
   local ranges = {}
-  for _, child in ipairs(class_sym.children or {}) do
-    if type(child) == "table" and child.kind == METHOD_KIND then
-      local name = M.normalize_method_name(child.name, child.detail)
+  local function walk(node)
+    if type(node) ~= "table" then
+      return
+    end
+    if node.kind == CLASS_KIND then
+      -- A nested class is its own context; do not exclude its body here.
+      return
+    end
+    local range = node_range(node)
+    if range then
+      ranges[#ranges + 1] = {
+        start_line = range.start.line,
+        end_line = range["end"].line,
+      }
+    end
+    if node.kind == METHOD_KIND then
+      local name = M.normalize_method_name(node.name, node.detail)
       if name ~= "" then
         implemented[name] = true
-        local range = node_range(child)
-        if range then
-          ranges[#ranges + 1] = {
-            start_line = range.start.line,
-            end_line = range["end"].line,
-          }
-        end
       end
     end
+    for _, child in ipairs(node.children or {}) do
+      walk(child)
+    end
+  end
+  for _, child in ipairs(class_sym.children or {}) do
+    walk(child)
   end
   return implemented, ranges
 end
@@ -344,10 +378,28 @@ end
 
 local resolve_kind
 
+-- Among the workspace/symbol matches for `segment`, prefer the class whose
+-- container name matches `prefix`; fall back to any name match otherwise.
+local function pick_symbol(items, segment, prefix)
+  local first
+  for _, item in ipairs(items or {}) do
+    if type(item) == "table" and item.kind == CLASS_KIND and item.name == segment then
+      if first == nil then
+        first = item
+      end
+      if prefix == nil or item.containerName == prefix then
+        return item
+      end
+    end
+  end
+  return first
+end
+
 -- Follows the hover answer of a project class through `workspace/symbol` and
--- reads its declaration to continue the chain. Failures call `on_fail` so the
--- caller can try the declaration's remaining bases.
-local function follow_symbol(state, plain, depth, on_done, on_fail)
+-- reads its declaration to continue the chain. Only the last segment of a
+-- namespace-qualified name is queried and compared. Failures call `on_fail`
+-- so the caller can try the declaration's remaining bases.
+local function follow_symbol(state, prefix, segment, depth, on_done, on_fail)
   if state.finished then
     return
   end
@@ -358,7 +410,7 @@ local function follow_symbol(state, plain, depth, on_done, on_fail)
     return on_fail()
   end
   local ok_request = pcall(function()
-    state.client:request("workspace/symbol", { query = plain }, function(err, result)
+    state.client:request("workspace/symbol", { query = segment }, function(err, result)
       if state.finished then
         return
       end
@@ -368,13 +420,7 @@ local function follow_symbol(state, plain, depth, on_done, on_fail)
       if err or type(result) ~= "table" then
         return on_fail()
       end
-      local symbol
-      for _, item in ipairs(result) do
-        if type(item) == "table" and item.name == plain and item.kind == CLASS_KIND then
-          symbol = item
-          break
-        end
-      end
+      local symbol = pick_symbol(result, segment, prefix)
       local range = node_range(symbol)
       local uri = symbol and symbol.location and symbol.location.uri
       if not range or type(uri) ~= "string" then
@@ -461,7 +507,8 @@ resolve_kind = function(state, source, depth, on_done)
         if hovered_kind then
           return on_done(hovered_kind)
         end
-        follow_symbol(state, plain, depth, on_done, next_base)
+        local prefix, segment = M.split_qualified(plain)
+        follow_symbol(state, prefix, segment, depth, on_done, next_base)
       end, source.bufnr)
     end)
     if not ok_request then
