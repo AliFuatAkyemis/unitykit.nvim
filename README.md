@@ -22,7 +22,7 @@ yazan sınıflarda çalışır, dolaylı kalıtımı çözmez.
 
 ```lua
 {
-  "alifuat/unitykit.nvim",
+  "AliFuatAkyemis/unitykit.nvim",
   dependencies = { "hrsh7th/nvim-cmp" },
   config = function()
     require("unitykit").setup()
