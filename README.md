@@ -1,38 +1,39 @@
 # unitykit.nvim
 
-Unity geliştirme araç seti — Neovim için.
+Unity development toolkit — for Neovim.
 
-Unity'nin yansıma (reflection) ile çağırdığı `Awake`, `Start`, `Update`,
-`OnCollisionEnter` gibi metotları doğru imza ve gövdeyle tamamlar. C# LSP'leri
-bu "sihirli" metotları bilmez; unitykit bu boşluğu kapatır.
+Completes the methods Unity invokes through reflection (`Awake`, `Start`,
+`Update`, `OnCollisionEnter`, …) with the correct signature and body. C# LSPs
+do not know about these "magic" methods; unitykit fills that gap.
 
-MonoBehaviour, ScriptableObject ve `UnityEditor.Editor` mesaj setlerini kapsar;
-nvim-cmp source'u olarak çalışır ve `:checkhealth unitykit` ile kendini denetler.
+It covers the MonoBehaviour, ScriptableObject and `UnityEditor.Editor` message
+sets, runs as an nvim-cmp source, and reports its own status through
+`:checkhealth unitykit`.
 
-## İçindekiler
+## Table of contents
 
-- [Ne yapar](#ne-yapar)
-- [Gereksinimler](#gereksinimler)
-- [Kurulum](#kurulum)
-  - [1. Ön koşulları doğrula](#1-ön-koşulları-doğrula)
-  - [2. Eklentiyi ekle](#2-eklentiyi-ekle)
-  - [3. cmp source'unu kaydet](#3-cmp-sourceunu-kaydet)
-  - [4. Unity Editor tarafını hazırla](#4-unity-editor-tarafını-hazırla)
-  - [5. Kurulumu doğrula](#5-kurulumu-doğrula)
-- [Kullanım](#kullanım)
-- [Ayarlar](#ayarlar)
-- [Sağlık kontrolü](#sağlık-kontrolü)
-- [Sorun giderme](#sorun-giderme)
-- [Sınırlar](#sınırlar)
-- [Kaldırma](#kaldırma)
-- [Dokümantasyon](#dokümantasyon)
-- [Lisans](#lisans)
+- [What it does](#what-it-does)
+- [Requirements](#requirements)
+- [Installation](#installation)
+  - [1. Verify prerequisites](#1-verify-prerequisites)
+  - [2. Add the plugin](#2-add-the-plugin)
+  - [3. Register the cmp source](#3-register-the-cmp-source)
+  - [4. Prepare the Unity Editor side](#4-prepare-the-unity-editor-side)
+  - [5. Verify the setup](#5-verify-the-setup)
+- [Usage](#usage)
+- [Configuration](#configuration)
+- [Health check](#health-check)
+- [Troubleshooting](#troubleshooting)
+- [Limitations](#limitations)
+- [Uninstalling](#uninstalling)
+- [Documentation](#documentation)
+- [License](#license)
 
-## Ne yapar
+## What it does
 
-- Bir sınıf gövdesinde yazarken Unity mesajlarını önerir: MonoBehaviour (36
-  mesaj), ScriptableObject (6) ve Editor (13).
-- Seçilen mesajı imzası ve gövdesiyle birlikte ekler:
+- Suggests Unity messages while you type inside a class body: MonoBehaviour
+  (36 messages), ScriptableObject (6) and Editor (13).
+- Inserts the selected message together with its signature and body:
 
   ```csharp
   void Start()
@@ -41,34 +42,35 @@ nvim-cmp source'u olarak çalışır ve `:checkhealth unitykit` ile kendini dene
   }
   ```
 
-- Gövde tek satır da olabilir: `void Start() { █ }`.
-- Zaten yazılmış mesajları listeden gizler (kapatılabilir).
-- Sınıf türünü önce C# LSP'sinden, LSP yoksa sınıf bildirimini tarayarak
-  bulur; böylece `class Player : BaseEnemy` gibi dolaylı kalıtım da çözülür.
-- Hiçbir dosya yazmaz, projeye veya Neovim config'ine iz bırakmaz.
+- The body can also be a single line: `void Start() { █ }`.
+- Hides messages that are already written (can be disabled).
+- Resolves the class type from the C# LSP first; without an LSP it scans the
+  class declaration, so indirect inheritance such as
+  `class Player : BaseEnemy` also works.
+- Writes no files and leaves no trace in your project or Neovim config.
 
-## Gereksinimler
+## Requirements
 
-| Gereksinim | Not |
+| Requirement | Note |
 | :-- | :-- |
-| **Neovim ≥ 0.10** | `vim.lsp.get_clients`, `vim.health` API'leri kullanılır. |
-| **[nvim-cmp](https://github.com/hrsh7th/nvim-cmp)** | Tek zorunlu bağımlılık. |
-| **Unity projesi** | Kökte `Assets/` ve `ProjectSettings/ProjectVersion.txt` bulunmalı. |
-| **C# LSP** *(opsiyonel)* | Roslyn önerilir. Yoksa eklenti yalnız doğrudan `: MonoBehaviour`, `: ScriptableObject`, `: Editor` yazan sınıflarda çalışır. |
+| **Neovim ≥ 0.10** | Uses the `vim.lsp.get_clients` and `vim.health` APIs. |
+| **[nvim-cmp](https://github.com/hrsh7th/nvim-cmp)** | The only required dependency. |
+| **Unity project** | `Assets/` and `ProjectSettings/ProjectVersion.txt` must exist at the root. |
+| **C# LSP** *(optional)* | Roslyn is recommended. Without one, the plugin only works in classes that declare `: MonoBehaviour`, `: ScriptableObject` or `: Editor` directly. |
 
-## Kurulum
+## Installation
 
-Eklentiyi hiç kurmamış biri için sırayla izlenecek adımlar aşağıda. Her adım
-bir öncekinin üzerine kurulur.
+The steps below are meant for someone installing the plugin for the first time.
+Each step builds on the previous one.
 
-### 1. Ön koşulları doğrula
+### 1. Verify prerequisites
 
 ```bash
-nvim --version | head -1   # v0.10 veya üstü olmalı
+nvim --version | head -1   # must be v0.10 or later
 git --version
 ```
 
-`nvim-cmp` kurulu değilse önce onu ekleyin (lazy.nvim örneği):
+If `nvim-cmp` is not installed yet, add it first (lazy.nvim example):
 
 ```lua
 -- lua/plugins/cmp.lua
@@ -81,9 +83,9 @@ return {
 }
 ```
 
-### 2. Eklentiyi ekle
+### 2. Add the plugin
 
-`lua/plugins/unitykit.lua` dosyasını oluşturun:
+Create `lua/plugins/unitykit.lua`:
 
 ```lua
 return {
@@ -95,16 +97,16 @@ return {
 }
 ```
 
-Neovim'i yeniden başlatın; lazy.nvim eklentiyi indirir. `:Lazy` ekranında
-`unitykit.nvim` görünmelidir.
+Restart Neovim; lazy.nvim downloads the plugin. `unitykit.nvim` should appear in
+the `:Lazy` window.
 
-> lazy.nvim dışında bir yönetici kullanıyorsanız aynı `dependencies` +
-> `require("unitykit").setup()` ikilisini kendi spec formatınıza uyarlayın.
+> If you use a plugin manager other than lazy.nvim, adapt the same
+> `dependencies` + `require("unitykit").setup()` pair to your spec format.
 
-### 3. cmp source'unu kaydet
+### 3. Register the cmp source
 
-`require("unitykit").setup()` source'u cmp'ye tanıtır, ancak **öncelik cmp
-tarafında** verilir:
+`require("unitykit").setup()` registers the source with cmp, but **priority is
+set on the cmp side**:
 
 ```lua
 require("cmp").setup({
@@ -116,29 +118,27 @@ require("cmp").setup({
 })
 ```
 
-cmp, source tablosundaki bir `priority` alanını okumaz; öncelik yalnız
-`sources` listesinde ayarlanır. `unitykit.setup()` source'u süreç başına bir kez
-kaydeder, tekrar çağrıları yalnız ayarları günceller.
+cmp does not read a `priority` field from the source table; priority is only
+configured in the `sources` list. `unitykit.setup()` registers the source once
+per process; repeated calls only update the configuration.
 
-### 4. Unity Editor tarafını hazırla
+### 4. Prepare the Unity Editor side
 
-unitykit bir Neovim eklentisidir; Unity projesine paket olarak kurulmaz.
-Editör tarafında yalnızca **proje dosyalarının üretilmesi** ve (isterseniz)
-Unity'nin dosyaları Neovim'de açması gerekir.
+unitykit is a Neovim plugin; it is not installed into the Unity project as a
+package. The Editor side only needs **project file generation** and, optionally,
+Unity opening files in Neovim.
 
-1. **Proje dosyalarını üret.** Unity'de
-   `Edit ▸ Preferences ▸ External Tools` yolunu açın ve
-   *Generate .csproj files for* altında en az **Registry packages** ile
-   **Local packages** seçeneklerini işaretleyin. Ardından **Regenerate project
-   files** düğmesine basın. Proje kökünde `.sln` ve `.csproj` dosyaları
-   oluşur; C# LSP'si bu dosyaları okur (LSP opsiyoneldir, unitykit onsuz da
-   çalışır).
-2. **IDE paketi (önerilir).** `Window ▸ Package Manager ▸ Unity Registry`
-   altından `Visual Studio Editor` veya `JetBrains Rider Editor` paketini
-   kurun. Bu paketler yukarıdaki *Regenerate project files* düğmesini ve
-   harici editör entegrasyonunu sağlar.
-3. **Neovim'i harici editör yap (opsiyonel).** Unity doğrudan Neovim'i
-   başlatamaz; küçük bir sarmalayıcı betik gerekir:
+1. **Generate project files.** In Unity open
+   `Edit ▸ Preferences ▸ External Tools` and under *Generate .csproj files for*
+   tick at least **Registry packages** and **Local packages**. Then press
+   **Regenerate project files**. `.sln` and `.csproj` files appear at the project
+   root; the C# LSP reads them (the LSP is optional — unitykit works without it).
+2. **IDE package (recommended).** Install the `Visual Studio Editor` or
+   `JetBrains Rider Editor` package from
+   `Window ▸ Package Manager ▸ Unity Registry`. These packages provide the
+   *Regenerate project files* button and external editor integration.
+3. **Make Neovim the external editor (optional).** Unity cannot launch Neovim
+   directly; a small wrapper script is required:
 
    ```bash
    # ~/bin/unity-nvim  (chmod +x ~/bin/unity-nvim)
@@ -146,55 +146,57 @@ Unity'nin dosyaları Neovim'de açması gerekir.
    exec alacritty -e nvim "+call cursor($2, $3)" "$1"
    ```
 
-   `External Tools ▸ External Script Editor ▸ Browse` ile bu betiği seçin.
-   Unity dosya adını, satırı ve sütunu argüman olarak geçirir; betikteki
-   terminal emülatörünü kendi kullandığınızla değiştirin.
+   Select this script via
+   `External Tools ▸ External Script Editor ▸ Browse`. Unity passes the file
+   name, line and column as arguments; replace the terminal emulator in the
+   script with the one you use.
 
-> Neovim'den Unity'ye herhangi bir şey kurulmaz; `Assets/`, `Packages/` veya
-> `ProjectSettings/` altında değişiklik oluşmaz. Adım 1 yalnız C# LSP'si için
-> gereklidir, unitykit'in kendisi için zorunlu değildir.
+> Nothing is installed from Neovim into Unity; no changes are made under
+> `Assets/`, `Packages/` or `ProjectSettings/`. Step 1 is only needed for the C#
+> LSP, not for unitykit itself.
 
-### 5. Kurulumu doğrula
+### 5. Verify the setup
 
-Bir C# dosyası açıp (Unity projesi içinde) şunu çalıştırın:
+Open a C# file (inside a Unity project) and run:
 
 ```vim
 :checkhealth unitykit
 ```
 
-Sağlıklı kurulumda görünenler:
+A healthy setup shows:
 
 ```text
 - OK Neovim 0.10+ ...
 - OK nvim-cmp is installed
 - OK Source: unitykit is registered
 - OK Unity project root: /path/to/project
-- OK C# LSP: roslyn            (LSP varsa)
+- OK C# LSP: roslyn            (when an LSP is available)
 ```
 
-Son olarak bir sınıf gövdesinde `Sta` yazıp tamamlama listesini açın;
-`Start()` önerisi gövdesiyle birlikte gelmelidir.
+Finally, type `Sta` inside a class body and open the completion list; the
+`Start()` suggestion should arrive with its body.
 
-## Kullanım
+## Usage
 
-1. Unity projesi içindeki bir `.cs` dosyasını açın.
-2. Sınıf gövdesinde mesaj adının birkaç harfini yazın.
-3. nvim-cmp listesinden seçin; imza ve gövde snippet olarak eklenir.
+1. Open a `.cs` file inside a Unity project.
+2. Type a few letters of a message name inside a class body.
+3. Pick it from the nvim-cmp list; the signature and body are inserted as a
+   snippet.
 
-Tamamlama yalnızca şu koşullarda öneri üretir:
+Completions are only offered when:
 
-- buffer'ın `filetype` değeri `cs` (ayarlanabilir),
-- buffer normal bir dosya (`buftype` boş ve `modifiable`),
-- dosya bir Unity kökünün altında,
-- imleç tanınan bir Unity sınıfının gövdesinde.
+- the buffer `filetype` is `cs` (configurable),
+- the buffer is a regular file (`buftype` empty and `modifiable`),
+- the file is under a Unity root,
+- the cursor is inside the body of a recognized Unity class.
 
-Sınıf türü belirlenemezse (ör. `: MonoBehaviour` yazmayan ve LSP'si olmayan
-dolaylı kalıtım) öneri gelmez — bu bilinçli bir sınırdır, yanlış öneri
-üretmektense susar.
+If the class type cannot be determined (for example indirect inheritance without
+`: MonoBehaviour` and without an LSP), no suggestions appear — this is a
+deliberate limitation: it stays silent rather than offering wrong suggestions.
 
-## Ayarlar
+## Configuration
 
-Tüm anahtarlar opsiyoneldir.
+All keys are optional.
 
 ```lua
 require("unitykit").setup({
@@ -202,95 +204,97 @@ require("unitykit").setup({
   body = "block",            -- "block" | "line"
   access = "none",           -- "none" | "private" | "public" | "protected"
   hide_implemented = true,
-  priority = true,           -- sortText öneki; cmp source önceliği değil
+  priority = true,           -- sortText prefix; not the cmp source priority
   timeout_ms = 1500,
 })
 ```
 
-| Anahtar | Varsayılan | Açıklama |
+| Key | Default | Description |
 | :-- | :-- | :-- |
-| `filetypes` | `{ "cs" }` | Öneri sunulan filetype'lar. |
-| `body` | `"block"` | `"block"` çok satırlı gövde, `"line"` tek satır. |
-| `access` | `"none"` | Kendi modifier'ı olmayan mesajlara eklenecek erişim belirleyici. |
-| `hide_implemented` | `true` | Sınıfta zaten geçen mesaj adlarını listeden çıkarır (büyük/küçük harfe duyarlı). |
-| `priority` | `true` | Öğelere `sortText = "0" .. ad` verir; böylece Unity mesajları LSP öğelerinin üstünde sıralanır. |
-| `timeout_ms` | `1500` | LSP yanıtı için beklenecek süre. Tamamlama bloklanmaz; regex sonucu hemen döner, geçerli LSP yanıtı sonradan üzerine yazılır. |
+| `filetypes` | `{ "cs" }` | Filetypes for which suggestions are offered. |
+| `body` | `"block"` | `"block"` for a multi-line body, `"line"` for a single line. |
+| `access` | `"none"` | Access modifier added to messages that do not declare their own. |
+| `hide_implemented` | `true` | Removes message names already present in the class from the list (case-sensitive). |
+| `priority` | `true` | Gives items `sortText = "0" .. name`, so Unity messages sort above LSP items. |
+| `timeout_ms` | `1500` | How long to wait for an LSP response. Completion is not blocked; the regex result returns immediately and a valid LSP response overwrites it afterwards. |
 
-`setup` birleştirilmiş config tablosunu döndürür. Geçersiz `body` / `access`
-değerleri uyarı verip varsayılana döner. Source kaydı bir kez başarıyla
-yapılır; nvim-cmp o anda yüklü değilse sonraki `setup()` çağrısı kaydı yeniden
-dener. `require("unitykit").is_registered()` kaydın durumunu bildirir.
-Ayrıntılar: `:help unitykit-config`.
+`setup` returns the merged config table. Invalid `body` / `access` values warn
+and fall back to the default. Source registration succeeds once; if nvim-cmp is
+not loaded at that moment, the next `setup()` call retries the registration.
+`require("unitykit").is_registered()` reports the registration state.
+Details: `:help unitykit-config`.
 
-## Sağlık kontrolü
+## Health check
 
 ```vim
 :checkhealth unitykit
 ```
 
-Neovim sürümü, nvim-cmp, kayıtlı source, aktif buffer'daki Unity kökü ve C# LSP
-client'ları raporlanır. Bağlam kaynağı (`lsp` / `fallback`) ile sınıf adı ve
-türü yalnız cache'te varsa gösterilir; `:checkhealth` bağlam çözmez ve LSP
-isteği göndermez.
+Reports the Neovim version, nvim-cmp, the registered source, the Unity root of
+the active buffer and the C# LSP clients. The context source (`lsp` / `fallback`),
+class name and type are shown only when present in the cache; `:checkhealth`
+does not resolve context and sends no LSP requests.
 
-## Sorun giderme
+## Troubleshooting
 
-| Belirti | Olası neden / çözüm |
+| Symptom | Likely cause / fix |
 | :-- | :-- |
-| Öneri hiç gelmiyor | `:checkhealth unitykit` — source kayıtlı mı, dosya Unity kökü altında mı? |
-| `Source: unitykit is not registered` | nvim-cmp yüklenmeden `setup()` çağrılmış. `config = function()` içinde `setup()` çağırın ve Neovim'i yeniden başlatın. |
-| Öneriler listenin altında kalıyor | cmp `sources` listesine `priority = 1000` ekleyin; `setup({ priority = true })` yalnız `sortText`'i etkiler. |
-| Unity kökü bulunamıyor | Proje kökünde `Assets/` ve `ProjectSettings/ProjectVersion.txt` olmalı; dosya bu ağacın dışındaysa çalışmaz. |
-| Dolaylı kalıtımda öneri yok | C# LSP kurun (Roslyn) ve `.sln` / `.csproj` dosyalarının üretildiğinden emin olun. |
+| No suggestions at all | `:checkhealth unitykit` — is the source registered, is the file under a Unity root? |
+| `Source: unitykit is not registered` | `setup()` ran before nvim-cmp was loaded. Call `setup()` inside `config = function()` and restart Neovim. |
+| Suggestions appear at the bottom of the list | Add `priority = 1000` to the cmp `sources` list; `setup({ priority = true })` only affects `sortText`. |
+| Unity root not found | The project root must contain `Assets/` and `ProjectSettings/ProjectVersion.txt`; files outside that tree do not work. |
+| No suggestions for indirect inheritance | Install a C# LSP (Roslyn) and make sure `.sln` / `.csproj` files are generated. |
 
-## Sınırlar
+## Limitations
 
-- **`blink.cmp` desteklenmiyor.** Yalnız nvim-cmp source'u vardır; bu yüzden
-  blink.cmp kullanan kurulumlar öneri görmez.
-- Mesaj listeleri eklentiyle birlikte gelir (statik); Unity sürümüne göre
-  otomatik güncellenmez.
-- Yalnızca üç sınıf türü tanınır: MonoBehaviour, ScriptableObject ve
+- **`blink.cmp` is not supported.** Only an nvim-cmp source exists, so
+  installations using blink.cmp will not see suggestions.
+- Message lists ship with the plugin (static); they are not updated
+  automatically per Unity version.
+- Only three class types are recognized: MonoBehaviour, ScriptableObject and
   `UnityEditor.Editor`.
 
-## Kaldırma
+## Uninstalling
 
-Eklenti hiçbir dosya, cache dizini veya Unity projesi ayarı yazmaz. Kaldırmak
-için yalnızca kendi eklediğiniz satırları geri alın:
+The plugin writes no files, cache directory or Unity project settings. To remove
+it, revert only the lines you added:
 
-1. **Eklenti spec'ini silin** — `lua/plugins/unitykit.lua` dosyasını silin
-   (veya spec'i eklediğiniz dosyadan bloğu çıkarın).
-2. **cmp source kaydını silin** — `require("cmp").setup({ sources = ... })`
-   içinden `{ name = "unitykit", priority = 1000 }` satırını çıkarın.
-3. **Varsa `setup()` çağrısını silin** — eklentiyi başka bir yerde
-   `require("unitykit").setup({...})` ile yapılandırdıysanız o bloğu kaldırın.
-4. **Eklentiyi fiziksel olarak temizleyin** — Neovim'i yeniden başlatıp:
+1. **Delete the plugin spec** — remove `lua/plugins/unitykit.lua` (or the block
+   from the file where you added the spec).
+2. **Remove the cmp source registration** — remove the
+   `{ name = "unitykit", priority = 1000 }` line from
+   `require("cmp").setup({ sources = ... })`.
+3. **Remove the `setup()` call if present** — if you configured the plugin
+   elsewhere with `require("unitykit").setup({...})`, drop that block.
+4. **Clean the plugin from disk** — restart Neovim and run:
 
    ```vim
    :Lazy clean
    ```
 
-   Bu komut artık spec'i olmayan eklentileri (unitykit.nvim dahil) siler.
-   Elle silmek isterseniz: `rm -rf ~/.local/share/nvim/lazy/unitykit.nvim`.
+   This deletes plugins that no longer have a spec (including unitykit.nvim).
+   To remove it by hand:
+   `rm -rf ~/.local/share/nvim/lazy/unitykit.nvim`.
 
-5. **Doğrulayın** — `:checkhealth unitykit` artık "not found" demeli;
-   `:Lazy` listesinde eklenti görünmemeli.
+5. **Verify** — `:checkhealth unitykit` should now say "not found", and the
+   plugin should no longer appear in the `:Lazy` list.
 
-Tempoya dair notlar:
+Notes on leftovers:
 
-- `lazy-lock.json` kullanıyorsanız `unitykit.nvim` girdisi `:Lazy clean`
-  sonrası kendiliğinden düşer; düşmezse dosyadan o satırı silin.
-- Unity projesinde temizlenecek bir şey yoktur: `Assets/`, `Packages/` ve
-  `ProjectSettings/` altına hiçbir şey yazılmaz. Adım 4'te anlatılan `.sln` /
-  `.csproj` dosyaları Unity'ye aittir ve LSP için gereklidir; unitykit'i
-  kaldırmak bunları silmeyi gerektirmez.
-- Tüm eklenti durumu bellekte tutulur (buffer cache, cmp kaydı); Neovim
-  kapandığında kendiliğinden yok olur.
+- If you use `lazy-lock.json`, the `unitykit.nvim` entry drops out by itself
+  after `:Lazy clean`; if it does not, delete that line from the file.
+- There is nothing to clean up in the Unity project: nothing is written under
+  `Assets/`, `Packages/` or `ProjectSettings/`. The `.sln` / `.csproj` files
+  mentioned in step 4 belong to Unity and are needed by the LSP; uninstalling
+  unitykit does not require deleting them.
+- All plugin state is kept in memory (buffer cache, cmp registration) and
+  disappears when Neovim exits.
 
-## Dokümantasyon
+## Documentation
 
-- Yardım: `:help unitykit` (kaynak: `doc/unitykit.txt`)
-- Tasarım: `docs/superpowers/specs/2026-10-27-unitykit-completion-design.md`
+- Help: `:help unitykit` (source: `doc/unitykit.txt`)
+- Design: `docs/superpowers/specs/2026-10-27-unitykit-completion-design.md`
 
-## Lisans
+## License
 
-MIT — `LICENSE` dosyasına bakın.
+MIT — see the `LICENSE` file.
