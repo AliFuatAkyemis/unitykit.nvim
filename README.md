@@ -87,4 +87,4 @@ adaptörü Faz 2'de planlanıyor.
 
 ## Lisans
 
-Henüz belirlenmedi.
+MIT — `LICENSE` dosyasına bakın.
