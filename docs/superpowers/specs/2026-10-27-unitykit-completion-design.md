@@ -159,14 +159,25 @@ Fallback dolaylı kalıtımı çözmez. Bu bilinen ve kabul edilen sınır.
 
 ### 5.5 Cache
 
-- Anahtar: `bufnr`.
-- Geçerlilik: `vim.api.nvim_buf_get_changedtick(bufnr)` + dosya adı.
-- `changedtick` değişince kayıt geçersiz; yeniden çözülür.
-- LSP çözümü tamamlanınca aynı `changedtick` için `source = "lsp"` kaydı
-  yazılır.
+- Kayıt buffer başına: `{ tick, kinds = { [class_key] = kind } }`.
+  `class_key = class_name .. ":" .. class_range.start_line` (`start_line`
+  0-based). Aynı dosyadaki iç içe veya kardeş sınıflar ayrı anahtar taşır;
+  imleç düzenleme olmadan sınıflar arasında gezebilir.
+- Geçerlilik: `vim.api.nvim_buf_get_changedtick(bufnr)`.
+  `changedtick` değişince kayıt geçersiz; yeniden çözülür.
+- Fallback context her çağrıda yeniden hesaplanır; cache yalnız LSP'nin
+  çözdüğü `class_kind` değerini sınıf anahtarı altında saklar. Cache'te
+  anahtar varsa context'e `source = "lsp"` olarak eklenir.
+- Geç gelen LSP cevabı, istek atılırken yakalanan sınıf anahtarına karşı
+  doğrulanır: cevabın `class_name` ve `class_range.start_line` değerleri
+  istek anındakiyle aynı olmalı. LSP sınıfı cevap anında imleç konumundan
+  seçtiği için imleç taşınmışsa cevap başka sınıfa aittir; saklanmaz, yalnız
+  kendi `pending` işareti temizlenir (diğer sınıflarınki korunur) ve sonraki
+  `resolve` yeniden istek açar.
 - `BufWipeout` / `BufDelete` -> kayıt silinir.
-- Cache yalnız tamamlanmış bağlamları tutar; bekleyen istekler için
-  `pending` işareti tutulur, tekrar istek açılmaz.
+- Cache yalnız tamamlanmış bağlamları tutar; bekleyen istekler için sınıf
+  anahtarı başına `pending` işareti tutulur, aynı tick'te tekrar istek
+  açılmaz (atılan cevap hariç).
 
 ## 6. Mesaj Veri Modeli
 
@@ -190,8 +201,10 @@ Fallback dolaylı kalıtımı çözmez. Bu bilinen ve kabul edilen sınır.
 ```
 
 `modifiers` neden var: `Editor.OnInspectorGUI` gerçek bir override'dır ve
-erişim belirteci olmadan (`override void`) derlenmez. Bu yüzden Editor
-mesajlarında `public override` zorunlu; `access` ayarı bunları ezmez.
+erişim belirteci olmadan (`override void`) derlenmez. Bu yüzden override
+gerektiren Editor mesajları `public override` (`OnHeaderGUI` için
+`protected override`) taşır; `access` ayarı bunları ezmez. Yaşam döngüsü
+mesajları ve `OnSceneGUI` native dispatch'tir, modifiers taşımaz.
 
 ### 6.1 Snippet üretimi
 
@@ -269,7 +282,11 @@ Ses: `OnAudioFilterRead(float[] data, int channels)`
 `OnInteractivePreviewGUI(Rect r, GUIStyle background)`,
 `RequiresConstantRepaint`
 
-`Editor` mesajlarının tamamı `public override` taşır.
+Yaşam döngüsü (`Awake`, `OnEnable`, `OnDisable`, `OnDestroy`, `OnValidate`,
+`Reset`) native message dispatch'tir; modifiers taşımaz. `OnSceneGUI` da
+managed virtual değildir; modifiers taşımaz. `OnInspectorGUI`, `HasPreviewGUI`,
+`OnPreviewGUI`, `OnInteractivePreviewGUI`, `RequiresConstantRepaint`
+`public override` taşır; `OnHeaderGUI` `protected override` taşır.
 `HasPreviewGUI` ve `RequiresConstantRepaint` `bool` döner.
 
 ## 7. Completion Davranışı

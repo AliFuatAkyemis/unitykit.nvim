@@ -1,0 +1,193 @@
+*unitykit.txt*          Unity message completion for Neovim     *unitykit*
+
+unitykit.nvim completes the methods Unity calls by reflection. C# LSPs do
+not know these magic methods, so `Awake`, `Start`, `Update`,
+`OnCollisionEnter` and friends are missing from LSP completion. unitykit
+fills that gap with correct signatures and bodies.
+
+Phase 1 scope: MonoBehaviour, ScriptableObject and UnityEditor.Editor
+message completion through nvim-cmp.
+
+==============================================================================
+CONTENTS                                                *unitykit-contents*
+
+  1. Requirements ................... |unitykit-requirements|
+  2. Installation ................... |unitykit-installation|
+  3. Setup .......................... |unitykit.setup()|
+  4. Configuration .................. |unitykit-config|
+  5. Message sets ................... |unitykit-messages|
+  6. Health check ................... |unitykit-health|
+  7. Limitations .................... |unitykit-limitations|
+
+==============================================================================
+1. Requirements                                 *unitykit-requirements*
+
+  - Neovim >= 0.10
+  - nvim-cmp (the only runtime dependency; optional at load time)
+  - A Unity project: a directory containing `Assets/` and
+    `ProjectSettings/ProjectVersion.txt`
+
+Optional: a C# language server (Roslyn is recommended). Without a language
+server unitykit still works for classes that name `: MonoBehaviour`,
+`: ScriptableObject` or `: Editor` directly; it cannot resolve indirect
+inheritance such as `class Player : BaseEnemy`, where `BaseEnemy` derives
+from MonoBehaviour.
+
+==============================================================================
+2. Installation                                 *unitykit-installation*
+
+With lazy.nvim: >lua
+
+  {
+    "alifuat/unitykit.nvim",
+    dependencies = { "hrsh7th/nvim-cmp" },
+    config = function()
+      require("unitykit").setup()
+    end,
+  }
+<
+Register the source in your cmp configuration and give it a priority: >lua
+
+  require("cmp").setup({
+    sources = {
+      { name = "unitykit", priority = 1000 },
+      { name = "nvim_lsp" },
+      { name = "buffer" },
+    },
+  })
+<
+nvim-cmp ignores a priority field on the source table itself, so the
+priority must be set here in `sources`, not in unitykit's `setup`.
+
+==============================================================================
+3. Setup
+
+require("unitykit").setup({opts})                       *unitykit.setup()*
+
+  Applies `opts` over the defaults and registers the `unitykit` source with
+  nvim-cmp the first time it runs. Later calls only replace the
+  configuration; a registered source is never registered twice. The call is
+  safe when nvim-cmp is not installed or not yet loaded: registration fails
+  silently and the next `setup()` call retries it.
+
+  `opts` is an optional table; see |unitykit-config|. Returns the merged
+  configuration table.
+
+require("unitykit").is_registered()
+
+  Reports whether the cmp source has been registered successfully so far.
+  Used by |unitykit-health|.
+
+==============================================================================
+4. Configuration                                        *unitykit-config*
+
+All keys are optional. >lua
+
+  require("unitykit").setup({
+    filetypes = { "cs" },
+    body = "block",
+    access = "none",
+    hide_implemented = true,
+    priority = true,
+    timeout_ms = 1500,
+  })
+<
+`filetypes`     table           default `{ "cs" }`
+  Filetypes in which completion is offered. Buffers with any other
+  filetype, or with `buftype` set, return no items.
+
+`body`          string          default `"block"`
+  Body style of the inserted snippet.
+  `"block"` inserts >csharp
+
+    void Start()
+    {
+        <cursor>
+    }
+<
+  `"line"` inserts `void Start() { <cursor> }` on one line.
+  Any other value falls back to `"block"` with a warning.
+
+`access`        string          default `"none"`
+  Access modifier for messages that do not carry their own `modifiers`.
+  Editor overrides force `public override` (or `protected override` for
+  OnHeaderGUI), which overrides `access`; the remaining Editor messages are
+  dispatched natively and follow `access`. Values: `"none"`, `"private"`,
+  `"public"`, `"protected"`. Any other value falls back to `"none"` with a
+  warning.
+
+`hide_implemented`      boolean         default `true`
+  When true, a message whose name already appears in the class body is not
+  offered again (case-sensitive).
+
+`priority`      boolean         default `true`
+  When true, items get `sortText = "0" .. name` so Unity messages sort
+  above language server items. When false, `sortText` is not set. This does
+  not change the cmp source priority; configure that in cmp `sources` as
+  shown in |unitykit-installation|.
+
+`timeout_ms`    number          default `1500`
+  How long the language server may take to answer before the regex fallback
+  result is kept. Completion never blocks: the fallback answers immediately
+  and a valid LSP answer replaces it asynchronously. A non-number value
+  falls back to the default.
+
+==============================================================================
+5. Message sets                                 *unitykit-messages*
+
+The class kind comes from the language server when available, otherwise
+from a regex scan of the class declaration. A class that is not recognised
+as one of the three kinds gets no messages.
+
+MonoBehaviour
+  Awake, OnEnable, Start, FixedUpdate, Update, LateUpdate, OnDisable,
+  OnDestroy, OnValidate, Reset, OnCollisionEnter, OnCollisionStay,
+  OnCollisionExit, OnTriggerEnter, OnTriggerStay, OnTriggerExit,
+  OnControllerColliderHit, OnParticleCollision, OnMouseEnter, OnMouseOver,
+  OnMouseExit, OnMouseDown, OnMouseUp, OnMouseUpAsButton, OnMouseDrag,
+  OnGUI, OnDrawGizmos, OnDrawGizmosSelected, OnBecameVisible,
+  OnBecameInvisible, OnApplicationFocus, OnApplicationPause,
+  OnApplicationQuit, OnTransformChildrenChanged,
+  OnTransformParentChanged, OnAudioFilterRead
+
+ScriptableObject
+  Awake, OnEnable, OnDisable, OnDestroy, OnValidate, Reset
+
+UnityEditor.Editor
+  Awake, OnEnable, OnDisable, OnDestroy, OnValidate, Reset, OnInspectorGUI,
+  OnSceneGUI, OnHeaderGUI, HasPreviewGUI, OnPreviewGUI,
+  OnInteractivePreviewGUI, RequiresConstantRepaint
+
+Messages are offered only inside a class body and outside method bodies.
+The prefix already typed is filtered by nvim-cmp itself.
+
+==============================================================================
+6. Health check                                 *unitykit-health*
+
+:checkhealth unitykit
+
+  Reports:
+  - the Neovim version against the 0.10 minimum
+  - whether nvim-cmp is installed
+  - whether the unitykit cmp source is registered; a failed registration is
+    an error with a hint to re-run `require("unitykit").setup()`
+  - the Unity project root found from the current buffer (or that the
+    buffer is not inside a Unity project)
+  - the attached C# language server names, or that the regex fallback is
+    active (only for buffers whose filetype is in `config.filetypes`)
+  - the cached context source (`lsp` or `fallback`) and the class name and
+    kind, when completion already resolved the buffer; the check itself
+    never resolves context or sends language server requests
+
+==============================================================================
+7. Limitations                                  *unitykit-limitations*
+
+  - blink.cmp is not supported in Phase 1; only nvim-cmp is wired up.
+  - Indirect inheritance needs a C# language server; the regex fallback
+    only reads the class's own base list.
+  - Only the three message sets above are bundled. EditorWindow,
+    ScriptableWizard, StateMachineBehaviour and NetworkBehaviour sets are
+    planned for a later phase.
+  - No debugger, analyzers, code actions or Unity Editor integration.
+
+ vim:tw=78:ts=8:noet:ft=help:norl:

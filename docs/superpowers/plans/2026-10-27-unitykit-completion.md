@@ -180,8 +180,8 @@ vim.api.nvim_buf_set_name(buf, fake .. "/Assets/C.cs")
 h.eq(project.root(buf), nil, "ProjectVersion yoksa kok yok")
 
 -- unnamed buffer
-vim.api.nvim_buf_set_name(buf, "")
-h.eq(project.root(buf), nil, "isimsiz buffer nil")
+local anon = h.new_buf({ "public class N {}" }, "cs")
+h.eq(project.root(anon), nil, "isimsiz buffer nil")
 
 -- cache invalidation
 vim.api.nvim_buf_set_name(buf, dir .. "/Assets/Scripts/A.cs")
@@ -546,7 +546,7 @@ git commit -m "feat: add regex fallback context resolution"
   - `require("unitykit.context").invalidate(bufnr: integer|nil)`
   - `require("unitykit.context").is_in_class_body(ctx: Context, row: integer) -> boolean`
 
-- [ ] **Step 1: Write failing `tests/cache_spec.lua`**
+- [x] **Step 1: Write failing `tests/cache_spec.lua`**
 
 ```lua
 local cache = require("unitykit.context.cache")
@@ -596,9 +596,9 @@ vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "public class A : MonoBehaviour"
 h.eq(context.resolve(buf, require("unitykit.config").setup()).source, "fallback", "degisiklikten sonra yine fallback")
 ```
 
-- [ ] **Step 2: Run, verify fail.**
+- [x] **Step 2: Run, verify fail.**
 
-- [ ] **Step 3: Implement `lua/unitykit/context/cache.lua`**
+- [x] **Step 3: Implement `lua/unitykit/context/cache.lua`**
 
 - `M.entries[bufnr] = { tick = nvim_buf_get_changedtick(bufnr), ctx = ctx, pending = true|false }`
 - `get`: kayıt varsa ve `tick == changedtick` ise `ctx` (pending ise `ctx` yine döner — fallback context).
@@ -607,7 +607,7 @@ h.eq(context.resolve(buf, require("unitykit.config").setup()).source, "fallback"
 - `invalidate(nil)`: tümü; aksi halde tek kayıt.
 - `BufWipeout`/`BufDelete` autocmd bir kez (`once` değil, `group` + `clear` korumalı) ile `invalidate(bufnr)`.
 
-- [ ] **Step 4: Implement `lua/unitykit/context/init.lua`**
+- [x] **Step 4: Implement `lua/unitykit/context/init.lua`**
 
 ```lua
 function M.resolve(bufnr, cfg)
@@ -634,9 +634,9 @@ end
 - `is_in_class_body(ctx, row)`: `ctx.class_range` ve `row >= start_line` ve `row <= end_line`; `method_ranges` içinde `row >= start_line and row <= end_line` olan varsa `false`.
 - `invalidate(bufnr)` -> `cache.invalidate`.
 
-- [ ] **Step 5: Run tests, verify pass.**
+- [x] **Step 5: Run tests, verify pass.**
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add lua/unitykit/context/init.lua lua/unitykit/context/cache.lua tests/cache_spec.lua
@@ -661,7 +661,7 @@ git commit -m "feat: add context cache and LSP-first orchestration"
   - `require("unitykit.context.lsp").qualify(kind: string) -> string` (test yardımcısı değil; `classify` ile aynı eşleme)
   - `require("unitykit.context.lsp").resolve(bufnr: integer, cfg: Config, done: fun(ctx: Context|nil)) -> nil` — asenkron; her koşulda `done` tam bir kez çağrılır, `timeout_ms` sonunda `nil` ile
 
-- [ ] **Step 1: Write failing `tests/context_lsp_spec.lua`**
+- [x] **Step 1: Write failing `tests/context_lsp_spec.lua`**
 
 ```lua
 local lsp = require("unitykit.context.lsp")
@@ -700,9 +700,9 @@ h.eq(result, nil, "client yokken nil")
 
 `h.eq` tablo karşılaştırması `vim.deep_equal` kullanır.
 
-- [ ] **Step 2: Run, verify fail.**
+- [x] **Step 2: Run, verify fail.**
 
-- [ ] **Step 3: Implement pure helpers**
+- [x] **Step 3: Implement pure helpers**
 
 - `strip_generics`: `<` öncesini al, `trim`.
 - `parse_base_names(line)`: `:` sonrasını al; `{}`/`;` kes; virgülle böl; her parçayı `strip_generics` + `trim`; boşları at. `(` içerenleri (constructor constraint) at.
@@ -710,11 +710,11 @@ h.eq(result, nil, "client yokken nil")
 - `parse_hover_class(md)`: `class%s+([%w_%.]+)` deseni; ilk yakalama. `struct`/`interface`/`enum` -> nil (desen zaten `class` arar, ama `class` içeren düz metin yanlış pozitif üretmesin diye yalnız ```csharp bloğunun ilk satırına bak).
 - `KIND_BY_QUALIFIED` = `{ ["UnityEngine.MonoBehaviour"] = "monobehaviour", ["UnityEngine.ScriptableObject"] = "scriptableobject", ["UnityEditor.Editor"] = "editor" }`; `qualify(kind)` ters eşleme.
 
-- [ ] **Step 4: Implement `resolve(bufnr, cfg, done)`**
+- [x] **Step 4: Implement `resolve(bufnr, cfg, done)`**
 
 Akış (her adım `pcall` ve iptal bayrağıyla korunur):
 
-1. `client = vim.lsp.get_clients({ bufnr = bufnr, method = "textDocument/documentSymbol" })[1]`; yoksa `done(nil)` döndür (`vim.schedule`).
+1. `client = vim.lsp.get_clients({ bufnr = bufnr, method = "textDocument/documentSymbol" })[1]`; yoksa `done(nil)` döndür (senkron, `vim.schedule` kullanma — test bunu bekliyor).
 2. `deadline = uv.now() + cfg.timeout_ms`; `finish(ctx)` yardımcısı `once` semantiği uygular, `done(ctx)` çağırır.
 3. `client:request("textDocument/documentSymbol", { textDocument = ... }, handler, bufnr)`:
    - handler içinde imleci içeren `kind == 5` (Class) en içteki sembolü bul -> `class_sym`.
@@ -734,9 +734,9 @@ Akış (her adım `pcall` ve iptal bayrağıyla korunur):
 
 Not: `workspace/symbol` desteklenmiyorsa (`client.server_capabilities.workspaceSymbolProvider == false`) yalnız hover ile sınırlı kal, `nil` dön.
 
-- [ ] **Step 5: Run tests, verify pass.**
+- [x] **Step 5: Run tests, verify pass.**
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add lua/unitykit/context/lsp.lua tests/context_lsp_spec.lua
@@ -758,7 +758,7 @@ git commit -m "feat: resolve Unity class kind via LSP hover and symbol chain"
   - `require("unitykit.completion.cmp").register(cfg: Config)` — `pcall(require, "cmp").register_source("unitykit", source)`; cmp yoksa sessiz döner
   - `require("unitykit.completion.cmp").source` — cmp source tablosu
 
-- [ ] **Step 1: Write failing `tests/source_spec.lua`**
+- [x] **Step 1: Write failing `tests/source_spec.lua`**
 
 ```lua
 package.loaded["unitykit.context.lsp"] = { resolve = function() end }
@@ -828,9 +828,9 @@ local ok, err = pcall(cmp_source.register, cfg)
 h.check(ok, "cmp yokken register hata vermez: " .. tostring(err))
 ```
 
-- [ ] **Step 2: Run, verify fail.**
+- [x] **Step 2: Run, verify fail.**
 
-- [ ] **Step 3: Implement `items(bufnr, cfg)`**
+- [x] **Step 3: Implement `items(bufnr, cfg)`**
 
 Guard sırası:
 
@@ -853,9 +853,9 @@ callback({ items = M.items(bufnr, require("unitykit.config").get()), isIncomplet
 
 `is_available` -> buffer'da imleçten önce harf veya `_` var mı (`vim.regex` kullanmadan `line:sub(1, col):match("[%w_]$") ~= nil`).
 
-- [ ] **Step 4: Run tests, verify pass.**
+- [x] **Step 4: Run tests, verify pass.**
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add lua/unitykit/completion/cmp.lua tests/source_spec.lua
@@ -879,7 +879,7 @@ git commit -m "feat: add nvim-cmp source"
   - `require("unitykit").setup(opts: table|nil) -> Config` — config'i uygular, source'u bir kez kaydeder
   - `require("unitykit.health").check()` — `:checkhealth unitykit` tarafından çağrılır
 
-- [ ] **Step 1: Write failing `tests/setup_spec.lua`**
+- [x] **Step 1: Write failing `tests/setup_spec.lua`**
 
 ```lua
 local registered = 0
@@ -894,15 +894,17 @@ h.eq(registered, 1, "source iki kez kaydedilmez")
 h.eq(require("unitykit.config").get().body, "block", "son setup gecerli")
 
 package.loaded.cmp = nil
+package.loaded["unitykit.completion.cmp"] = nil
+package.loaded["unitykit"] = nil
 local ok = pcall(function() require("unitykit").setup({}) end)
 h.check(ok, "cmp yokken setup hata vermez")
 
 h.check(type(require("unitykit.health").check) == "function", "health.check var")
 ```
 
-- [ ] **Step 2: Run, verify fail.**
+- [x] **Step 2: Run, verify fail.**
 
-- [ ] **Step 3: Implement `lua/unitykit/init.lua`**
+- [x] **Step 3: Implement `lua/unitykit/init.lua`**
 
 ```lua
 local M = {}
@@ -920,7 +922,7 @@ end
 return M
 ```
 
-- [ ] **Step 4: Implement `lua/unitykit/health.lua`**
+- [x] **Step 4: Implement `lua/unitykit/health.lua`**
 
 `check()` içinde `vim.health.start("unitykit")`, ardından:
 
@@ -929,20 +931,20 @@ return M
 - `package.loaded["unitykit.completion.cmp"]` kayıtlı mı.
 - Aktif buffer: `project.root(bufnr)`, `vim.lsp.get_clients({ bufnr = bufnr })` adları, `context.resolve` kaynağı ve `class_kind`.
 
-- [ ] **Step 5: Write `doc/unitykit.txt`**
+- [x] **Step 5: Write `doc/unitykit.txt`**
 
 `:help unitykit` başlığı, `unitykit.setup()` seçenekleri, mesaj türleri, gereksinimler, `:checkhealth unitykit`. Vim help formatı (`*unitykit.txt*`, `*unitykit.setup()*` etiketleri).
 
-- [ ] **Step 6: Update `README.md`**
+- [x] **Step 6: Update `README.md`**
 
 "Düzenli durum" satırını `Faz 1 tamamlandı` yap; `setup` örneği ve `:checkhealth` satırı ekle; `blink.cmp` kullanıcıları için uyarı (Faz 2).
 
-- [ ] **Step 7: Run full suite**
+- [x] **Step 7: Run full suite**
 
 Run: `tests/run.sh`
 Expected: tüm spec'ler `FAIL` içermez, exit 0.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add lua/unitykit/init.lua lua/unitykit/health.lua doc/unitykit.txt README.md tests/setup_spec.lua
@@ -993,6 +995,13 @@ Spec'in sonuna `## 14. Doğrulama Notu` bölümü ekle: tarih, Neovim sürümü,
 git add docs/superpowers/specs/2026-10-27-unitykit-completion-design.md
 git commit -m "docs: record phase 1 manual verification"
 ```
+
+> **Final review fixes:** corrected Editor modifiers against UnityCsReference
+> (public/protected override vs native dispatch); made the context cache
+> cursor-dependent per class key; excluded constructor, finalizer and
+> block-bodied property-accessor bodies from completion; resolved
+> namespace-qualified base types via the last segment with a containerName
+> preference; delegated the health cmp probe to `completion/cmp.lua`.
 
 ---
 
