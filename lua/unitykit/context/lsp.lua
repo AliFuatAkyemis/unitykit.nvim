@@ -481,7 +481,8 @@ resolve_kind = function(state, source, depth, on_done)
     if kind then
       return on_done(kind)
     end
-    local position = find_identifier(declared, source, plain)
+    local prefix, segment = M.split_qualified(plain)
+    local position = find_identifier(declared, source, segment)
     if not position then
       return next_base()
     end
@@ -507,7 +508,6 @@ resolve_kind = function(state, source, depth, on_done)
         if hovered_kind then
           return on_done(hovered_kind)
         end
-        local prefix, segment = M.split_qualified(plain)
         follow_symbol(state, prefix, segment, depth, on_done, next_base)
       end, source.bufnr)
     end)

@@ -243,4 +243,69 @@ h.eq(workspace_query, "BaseEnemy", "sorgu son segment")
 h.eq(ns_calls, 1, "namespace done tam bir kez")
 h.eq(ns_ctx and ns_ctx.class_kind, "monobehaviour", "namespace base cozulur")
 
+-- namespace-qualified base whose prefix is itself a namespace: hover must land
+-- on the last segment (`NamespacedBase`), not on the leading `Game`.
+local seg_line = "public class NamespacedDerived : Game.NamespacedBase"
+local seg_index = assert(seg_line:find("NamespacedBase", 1, true)) - 1
+local hover_chars = {}
+vim.lsp.get_clients = function()
+  return {
+    {
+      server_capabilities = {},
+      request = function(_, method, params, handler)
+        if method == "textDocument/documentSymbol" then
+          handler(nil, {
+            {
+              name = "NamespacedDerived",
+              kind = 5,
+              range = {
+                start = { line = 0, character = 0 },
+                ["end"] = { line = 2, character = 1 },
+              },
+            },
+          })
+        elseif method == "textDocument/hover" then
+          hover_chars[#hover_chars + 1] = params.position.character
+          if params.position.character == seg_index then
+            handler(nil, {
+              contents = {
+                kind = "markdown",
+                value = "```csharp\nclass UnityEngine.MonoBehaviour\n```",
+              },
+            })
+          else
+            handler(nil, {
+              contents = { kind = "markdown", value = "```csharp\nnamespace Game\n```" },
+            })
+          end
+        end
+      end,
+    },
+  }
+end
+local seg_buf = h.new_buf({
+  seg_line, -- 0
+  "{",      -- 1
+  "}",      -- 2
+}, "cs")
+vim.api.nvim_win_set_cursor(0, { 2, 0 })
+local seg_calls, seg_ctx = 0, "sentinel"
+local seg_ok = pcall(
+  lsp.resolve,
+  seg_buf,
+  require("unitykit.config").setup({ timeout_ms = 500 }),
+  function(ctx)
+    seg_calls = seg_calls + 1
+    seg_ctx = ctx
+  end
+)
+vim.wait(500, function()
+  return seg_calls > 0
+end)
+vim.lsp.get_clients = real_get_clients
+h.check(seg_ok, "segment resolve hata vermez")
+h.eq(#hover_chars, 1, "segment icin tek hover")
+h.eq(hover_chars[1], seg_index, "hover son segmente")
+h.eq(seg_ctx and seg_ctx.class_kind, "monobehaviour", "segment base cozulur")
+
 h.finish()
