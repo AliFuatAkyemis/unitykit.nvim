@@ -190,8 +190,10 @@ Fallback dolaylı kalıtımı çözmez. Bu bilinen ve kabul edilen sınır.
 ```
 
 `modifiers` neden var: `Editor.OnInspectorGUI` gerçek bir override'dır ve
-erişim belirteci olmadan (`override void`) derlenmez. Bu yüzden Editor
-mesajlarında `public override` zorunlu; `access` ayarı bunları ezmez.
+erişim belirteci olmadan (`override void`) derlenmez. Bu yüzden override
+gerektiren Editor mesajları `public override` (`OnHeaderGUI` için
+`protected override`) taşır; `access` ayarı bunları ezmez. Yaşam döngüsü
+mesajları ve `OnSceneGUI` native dispatch'tir, modifiers taşımaz.
 
 ### 6.1 Snippet üretimi
 
@@ -269,7 +271,11 @@ Ses: `OnAudioFilterRead(float[] data, int channels)`
 `OnInteractivePreviewGUI(Rect r, GUIStyle background)`,
 `RequiresConstantRepaint`
 
-`Editor` mesajlarının tamamı `public override` taşır.
+Yaşam döngüsü (`Awake`, `OnEnable`, `OnDisable`, `OnDestroy`, `OnValidate`,
+`Reset`) native message dispatch'tir; modifiers taşımaz. `OnSceneGUI` da
+managed virtual değildir; modifiers taşımaz. `OnInspectorGUI`, `HasPreviewGUI`,
+`OnPreviewGUI`, `OnInteractivePreviewGUI`, `RequiresConstantRepaint`
+`public override` taşır; `OnHeaderGUI` `protected override` taşır.
 `HasPreviewGUI` ve `RequiresConstantRepaint` `bool` döner.
 
 ## 7. Completion Davranışı

@@ -109,9 +109,12 @@ All keys are optional. >lua
   Any other value falls back to `"block"` with a warning.
 
 `access`        string          default `"none"`
-  Access modifier for messages that do not force one (Editor messages are
-  always `public override`). Values: `"none"`, `"private"`, `"public"`,
-  `"protected"`. Any other value falls back to `"none"` with a warning.
+  Access modifier for messages that do not carry their own `modifiers`.
+  Editor overrides force `public override` (or `protected override` for
+  OnHeaderGUI), which overrides `access`; the remaining Editor messages are
+  dispatched natively and follow `access`. Values: `"none"`, `"private"`,
+  `"public"`, `"protected"`. Any other value falls back to `"none"` with a
+  warning.
 
 `hide_implemented`      boolean         default `true`
   When true, a message whose name already appears in the class body is not

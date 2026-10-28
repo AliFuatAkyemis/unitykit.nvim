@@ -1,35 +1,30 @@
 -- UnityEditor.Editor message signatures and one-line Turkish descriptions.
--- Every editor message is overridden, so `modifiers` is always "public override".
+-- Only genuine overrides carry `modifiers`; lifecycle messages and OnSceneGUI
+-- are dispatched natively and take no access modifier.
 return {
-  -- Lifecycle
+  -- Lifecycle (native message dispatch; no modifiers)
   {
     name = "Awake",
-    modifiers = "public override",
     doc = "Editör örneği oluşturulduğunda çağrılır.",
   },
   {
     name = "OnEnable",
-    modifiers = "public override",
     doc = "Editör örneği etkinleştirildiğinde çağrılır.",
   },
   {
     name = "OnDisable",
-    modifiers = "public override",
     doc = "Editör örneği devre dışı bırakıldığında çağrılır.",
   },
   {
     name = "OnDestroy",
-    modifiers = "public override",
     doc = "Editör örneği yok edilirken çağrılır.",
   },
   {
     name = "OnValidate",
-    modifiers = "public override",
     doc = "Inspector'da değer değiştiğinde veya betik yeniden yüklendiğinde çağrılır.",
   },
   {
     name = "Reset",
-    modifiers = "public override",
     doc = "Editör hedefi Inspector'da sıfırlandığında çağrılır.",
   },
 
@@ -41,12 +36,11 @@ return {
   },
   {
     name = "OnSceneGUI",
-    modifiers = "public override",
     doc = "Sahne görünümünde etkileşim çizimi için çağrılır.",
   },
   {
     name = "OnHeaderGUI",
-    modifiers = "public override",
+    modifiers = "protected override",
     doc = "Inspector başlığı çizilirken çağrılır.",
   },
 

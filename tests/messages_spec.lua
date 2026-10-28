@@ -79,8 +79,36 @@ h.check(not so.Update, "scriptableobject Update yok")
 
 local editor = messages.get("editor")
 h.check(#editor > 0, "editor listesi bos degil")
-for _, m in ipairs(editor) do
-  h.eq(m.modifiers, "public override", "editor modifiers: " .. m.name)
+
+-- Three groups, verified against UnityCsReference:
+--  - genuine overrides (public virtual) -> "public override"
+--  - OnHeaderGUI (protected virtual) -> "protected override"
+--  - lifecycle + OnSceneGUI (native dispatch) -> no modifiers
+local OVERRIDES = {
+  "OnInspectorGUI",
+  "HasPreviewGUI",
+  "OnPreviewGUI",
+  "OnInteractivePreviewGUI",
+  "RequiresConstantRepaint",
+}
+local PROTECTED = { "OnHeaderGUI" }
+local NATIVE = {
+  "Awake",
+  "OnEnable",
+  "OnDisable",
+  "OnDestroy",
+  "OnValidate",
+  "Reset",
+  "OnSceneGUI",
+}
+for _, name in ipairs(OVERRIDES) do
+  h.eq(messages.get_by_name("editor", name).modifiers, "public override", "override: " .. name)
+end
+for _, name in ipairs(PROTECTED) do
+  h.eq(messages.get_by_name("editor", name).modifiers, "protected override", "protected: " .. name)
+end
+for _, name in ipairs(NATIVE) do
+  h.eq(messages.get_by_name("editor", name).modifiers, nil, "native: " .. name)
 end
 h.eq(messages.get_by_name("editor", "HasPreviewGUI").returns, "bool", "HasPreviewGUI bool doner")
 h.eq(
