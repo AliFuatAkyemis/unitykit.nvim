@@ -22,7 +22,7 @@ end
 -- Dispatches one LSP resolution for a class key. The result is stored under
 -- the class key captured here, so a late answer for a stale tick or a
 -- different class never overwrites anything.
-local function request_lsp(bufnr, cfg, class_key)
+local function request_lsp(bufnr, cfg, class_key, class_name, class_start_line)
   local dispatch_tick = current_tick(bufnr)
   local ok, lsp = pcall(require, "unitykit.context.lsp")
   if not ok or type(lsp) ~= "table" or type(lsp.resolve) ~= "function" then
@@ -44,6 +44,19 @@ local function request_lsp(bufnr, cfg, class_key)
     end
     -- The request for this class was superseded or already answered.
     if not cache.pending(bufnr, class_key) then
+      return
+    end
+    -- The language server selects the class from the cursor position when the
+    -- response arrives, so an answer computed after the cursor moved belongs
+    -- to another class. Storing it under the dispatch key would poison that
+    -- class with a foreign kind; discard it and let the next resolve retry.
+    local answer_range = lsp_ctx.class_range
+    if
+      lsp_ctx.class_name ~= class_name
+      or type(answer_range) ~= "table"
+      or answer_range.start_line ~= class_start_line
+    then
+      cache.clear_pending(bufnr, class_key)
       return
     end
     cache.store_kind(bufnr, class_key, lsp_ctx.class_kind)
@@ -77,7 +90,7 @@ function M.resolve(bufnr, cfg)
 
   if not cache.pending(bufnr, class_key) then
     cache.set_pending(bufnr, ctx)
-    request_lsp(bufnr, cfg, class_key)
+    request_lsp(bufnr, cfg, class_key, ctx.class_name, ctx.class_range.start_line)
   end
   return ctx
 end

@@ -249,4 +249,88 @@ h.eq(
   "kardes B kind"
 )
 
+-- ---------------------------------------------------------------------------
+-- Late answer computed for another class: the cursor moved between dispatch
+-- and response, so the LSP class no longer matches the dispatch key. The
+-- answer is discarded instead of poisoning the dispatch key.
+-- ---------------------------------------------------------------------------
+local late_done = {}
+local late_names = {}
+package.loaded["unitykit.context.lsp"] = {
+  resolve = function(bufnr, _, done)
+    local fb = require("unitykit.context.fallback").resolve(bufnr)
+    late_names[#late_names + 1] = fb.class_name
+    late_done[#late_done + 1] = done
+  end,
+}
+
+local moved = h.new_buf({
+  "public class Outer : MonoBehaviour",        -- 0
+  "{",                                          -- 1
+  "    public class Inner : ScriptableObject",  -- 2
+  "    {",                                      -- 3
+  "    }",                                      -- 4
+  "}",                                          -- 5
+}, "cs")
+
+-- Dispatch for Outer.
+vim.api.nvim_win_set_cursor(0, { 2, 0 })
+h.eq(
+  context2.resolve(moved, require("unitykit.config").setup()).class_name,
+  "Outer",
+  "gec cvp: Outer icin istek acilir"
+)
+h.eq(#late_names, 1, "gec cvp: tek istek")
+h.eq(late_names[1], "Outer", "gec cvp: istek Outer icin")
+
+-- Cursor moves to Inner before the answer arrives.
+vim.api.nvim_win_set_cursor(0, { 4, 8 })
+h.eq(
+  context2.resolve(moved, require("unitykit.config").setup()).class_name,
+  "Inner",
+  "gec cvp: imlec Inner'a tasinir"
+)
+
+-- The answer is what the server computed at response time: with the cursor on
+-- Inner, even though it was dispatched for Outer.
+late_done[1]({
+  class_name = "Inner",
+  class_kind = "scriptableobject",
+  class_range = { start_line = 2, end_line = 4 },
+  method_ranges = {},
+  implemented = {},
+  source = "lsp",
+})
+
+h.eq(
+  cache.get_kind(moved, "Outer:0"),
+  nil,
+  "gec cvp: yabanci kind dispatch anahtarina yazilmaz"
+)
+h.eq(cache.get_kind(moved, "Inner:2"), nil, "gec cvp: yabanci cvp hicbir anahtara yazilmaz")
+h.check(cache.pending(moved, "Inner:2"), "gec cvp: diger sinifin pending'i korunur")
+h.eq(cache.pending(moved, "Outer:0"), false, "gec cvp: atilan cvp retry'a izin verir")
+
+-- The original class still reports the fallback kind (not poisoned), and a
+-- fresh dispatch can resolve it correctly.
+vim.api.nvim_win_set_cursor(0, { 2, 0 })
+local after_late = context2.resolve(moved, require("unitykit.config").setup())
+h.eq(after_late.class_name, "Outer", "gec cvp: tekrar Outer")
+h.eq(after_late.class_kind, "monobehaviour", "gec cvp: fallback kind zehirlenmez")
+h.eq(after_late.source, "fallback", "gec cvp: kaynak fallback kalir")
+h.eq(#late_names, 3, "gec cvp: yeni istek acilir")
+h.eq(late_names[3], "Outer", "gec cvp: yeni istek Outer icin")
+
+late_done[3]({
+  class_name = "Outer",
+  class_kind = "monobehaviour",
+  class_range = { start_line = 0, end_line = 5 },
+  method_ranges = {},
+  implemented = {},
+  source = "lsp",
+})
+local fresh = context2.resolve(moved, require("unitykit.config").setup())
+h.eq(fresh.class_kind, "monobehaviour", "gec cvp: yeni cvp Outer'a yazilir")
+h.eq(fresh.source, "lsp", "gec cvp: yeni cvp kaynagi lsp")
+
 h.finish()

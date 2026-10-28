@@ -149,6 +149,21 @@ function M.pending(bufnr, class_key)
   return false
 end
 
+---Clears the in-flight marker for one class key after its answer was
+---discarded, so a later resolve can dispatch again. Other class keys keep
+---their own marker.
+---@param bufnr integer
+---@param class_key string
+---@return boolean
+function M.clear_pending(bufnr, class_key)
+  local entry = fresh_entry(bufnr)
+  if entry == nil or type(class_key) ~= "string" then
+    return false
+  end
+  entry.pending[class_key] = nil
+  return true
+end
+
 ---Records a resolved kind under a specific class key and clears its pending
 ---flag. No-op when the buffer tick moved on since the request was dispatched.
 ---@param bufnr integer
