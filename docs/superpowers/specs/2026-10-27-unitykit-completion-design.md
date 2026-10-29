@@ -349,8 +349,13 @@ source.register("unitykit", {
   documentation = { kind = "markdown", value = "..." },
   sortText = "0" .. name,   -- priority = true
   filterText = name,
+  preselect = true,
 }
 ```
+
+`preselect = true` ilk Unity item'ının menüde işaretli gelmesini sağlar
+(`get_selected_entry()` dolu olur). `get_active_entry()` bundan etkilenmez;
+`<CR>` gibi onay mapping'leri `cmp.confirm({ select = true })` kullanmalıdır.
 
 `documentation` içeriği:
 

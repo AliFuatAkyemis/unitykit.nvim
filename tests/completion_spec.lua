@@ -35,6 +35,7 @@ h.eq(cmp_item.insertTextFormat, 2, "insertTextFormat Snippet")
 h.eq(cmp_item.detail, "Unity Message", "detail")
 h.eq(cmp_item.sortText, "0Start", "sortText oncelik")
 h.eq(cmp_item.filterText, "Start", "filterText")
+h.eq(cmp_item.preselect, true, "ilk item secili gelsin")
 h.check(cmp_item.documentation.value:find("Start", 1, true) ~= nil, "dokuman mesaj adini icerir")
 h.check(cmp_item.documentation.value:find("void Start()", 1, true) ~= nil, "dokuman imzayi icerir")
 

@@ -59,6 +59,7 @@ function M.to_cmp_item(msg, cfg, ctx) --luacheck: ignore ctx
     },
     sortText = cfg.priority and ("0" .. msg.name) or nil,
     filterText = msg.name,
+    preselect = true,
   }
 end
 
